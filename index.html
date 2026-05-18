@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Inventaire Mobile Dream Market</title>
+    <!-- Librairie de scan -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <!-- Librairies Excel/PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f0f2f5;
+            min-height: 100vh;
+            touch-action: manipulation;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .app {
+            max-width: 100%;
+            margin: 0 auto;
+            background: white;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 0 20px rgba(0,0,0,0.05);
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            color: white;
+            padding: 16px;
+            text-align: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header h1 {
+            font-size: 1.4em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .nav {
+            display: flex;
+            background: white;
+            border-bottom: 1px solid #e5e7eb;
+            position: sticky;
+            top: 70px;
+            z-index: 99;
+        }
+
+        .nav button {
+            flex: 1;
+            padding: 12px 8px;
+            border: none;
+            background: transparent;
+            font-size: 0.9em;
+            font-weight: 600;
+            color: #6b7280;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .nav button.active {
+            color: #4f46e5;
+            border-bottom-color: #4f46e5;
+            background: #f5f3ff;
+        }
+
+        .content {
+            flex: 1;
+            padding: 16px;
+            overflow-y: auto;
+        }
+
+        .page {
+            display: none;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.85em;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .input-with-scan {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .input-with-scan input {
+            flex: 1;
+            padding: 14px 16px;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            font-size: 1em;
+            transition: all 0.2s;
+            background: #f9fafb;
+            min-width: 0;
+        }
+
+        .input-with-scan input:focus {
+            outline: none;
+            border-color: #4f46e5;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+
+        .scan-btn {
+            margin-left: 8px;
+            padding: 14px;
+            background: #4f46e5;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.2em;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 50px;
+            transition: background 0.2s;
+            flex-shrink: 0;
+        }
+
+        .scan-btn:active {
+            background: #4338ca;
+            transform: scale(0.96);
+        }
+
+        .scan-btn.scanning {
+            background: #dc2626;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        #reader {
+            width: 100%;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-top: 8px;
+            display: none;
+        }
+
+        #reader.active {
+            display: block;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn-primary { background: #4f46e5; color: white; }
+        .btn-success { background: #10b981; color: white; }
+        .btn-warning { background: #f59e0b; color: white; }
+        .btn-info { background: #3b82f6; color: white; }
+        .btn-danger { background: #ef4444; color: white; }
+
+        .btn-outline {
+            background: white;
+            border: 2px solid #4f46e5;
+            color: #4f46e5;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 16px 0;
+        }
+
+        .btn-group .btn {
+            flex: 1;
+            min-width: 120px;
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 12px;
+            margin: 12px 0;
+            font-size: 0.9em;
+            font-weight: 500;
+        }
+
+        .alert-success { background: #d1fae5; color: #065f46; }
+        .alert-error { background: #fee2e2; color: #991b1b; }
+        .alert-info { background: #dbeafe; color: #1e40af; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8em;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+        }
+
+        th {
+            background: #f3f4f6;
+            padding: 12px 8px;
+            text-align: left;
+            font-weight: 600;
+            color: #374151;
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 10px 8px;
+            border-bottom: 1px solid #f3f4f6;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            margin: 16px 0;
+        }
+
+        .icon-btn {
+            background: none;
+            border: none;
+            font-size: 1.2em;
+            padding: 4px 8px;
+            cursor: pointer;
+            color: #6b7280;
+        }
+
+        .icon-btn:active { color: #4f46e5; }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            width: 90%;
+            max-width: 400px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin: 16px 0;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+            color: white;
+            padding: 16px;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .stat-card h3 {
+            font-size: 0.75em;
+            opacity: 0.9;
+            margin-bottom: 6px;
+        }
+
+        .stat-card .value {
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+
+        @media (min-width: 768px) {
+            .app {
+                max-width: 768px;
+                margin: 20px auto;
+                border-radius: 24px;
+                min-height: auto;
+                box-shadow: 0 25px 50px rgba(0,0,0,0.15);
+            }
+            .btn {
+                width: auto;
+            }
+            .btn-group .btn {
+                flex: initial;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <div class="header">
+            <h1>📦 Inventaire Mobile Dream Market</h1>
+        </div>
+        <div class="nav">
+            <button class="active" data-page="saisie">📝 Saisie</button>
+            <button data-page="base">📂 Base</button>
+            <button data-page="resultat">📊 Résultats</button>
+        </div>
+        <div class="content">
+            <!-- Page Saisie -->
+            <div id="saisie" class="page active">
+                <div class="card">
+                    <div class="form-group">
+                        <label>Code Article</label>
+                        <div class="input-with-scan">
+                            <input type="text" id="codeArticle" placeholder="Scanner ou saisir le code..." autofocus>
+                            <button class="scan-btn" id="scanToggle" title="Scanner avec la caméra">📷</button>
+                        </div>
+                        <div id="reader"></div>
+                        <small style="color: #6b7280; display: block; margin-top: 4px;">
+                            ⚠️ Le scan nécessite une connexion sécurisée (https://) ou un serveur local.
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <label>Comptage Physique</label>
+                        <input type="number" id="comptage" placeholder="Quantité comptée..." min="0" style="width:100%; padding:14px; border:2px solid #e5e7eb; border-radius:12px; font-size:1em;">
+                    </div>
+                    <button class="btn btn-primary" id="btnValider">✅ Valider la Saisie</button>
+                    <button class="btn btn-warning" id="btnReset">🔄 Réinitialiser</button>
+                    <div id="messageSaisie"></div>
+                </div>
+                <h3 style="margin: 20px 0 10px;">Dernières saisies</h3>
+                <div class="table-container">
+                    <table id="tableSaisies">
+                        <thead><tr><th>Code</th><th>Désignation</th><th>Qté</th><th>Heure</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Page Base -->
+            <div id="base" class="page">
+                <div class="card">
+                    <h3>Base Articles</h3>
+                    <div class="btn-group">
+                        <button class="btn btn-info" id="btnImport">📥 Importer Excel</button>
+                        <button class="btn btn-success" id="btnExportBase">📤 Exporter Excel</button>
+                    </div>
+                    <button class="btn btn-outline" id="btnAjouterArticle">➕ Ajouter un article</button>
+                    <button class="btn btn-danger" id="btnViderBase">🗑️ Vider la base</button>
+                    <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
+                    <div id="messageBase"></div>
+                </div>
+                <div class="table-container">
+                    <table id="tableBase">
+                        <thead><tr><th>Code</th><th>Désignation</th><th>Prix Achat (DH)</th><th>Stock</th><th style="width:80px;">Actions</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Page Résultat -->
+            <div id="resultat" class="page">
+                <div class="stats" id="statsContainer"></div>
+                <div class="btn-group">
+                    <button class="btn btn-success" id="btnExportResExcel">📊 Excel</button>
+                    <button class="btn btn-info" id="btnExportResPDF">📄 PDF</button>
+                    <button class="btn btn-warning" id="btnActualiser">🔄 Actualiser</button>
+                </div>
+                <div id="messageResultat"></div>
+                <div class="table-container">
+                    <table id="tableResultat">
+                        <thead><tr><th>Code</th><th>Désignation</th><th>Prix (DH)</th><th>Stock</th><th>Comptage</th><th>Écart</th><th>Val. Écart (DH)</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale pour ajouter/modifier un article -->
+    <div class="modal" id="articleModal">
+        <div class="modal-content">
+            <h3 id="modalTitle">Ajouter un article</h3>
+            <div class="form-group">
+                <label>Code</label>
+                <input type="text" id="modalCode" placeholder="Code article">
+            </div>
+            <div class="form-group">
+                <label>Désignation</label>
+                <input type="text" id="modalDesignation" placeholder="Nom de l'article">
+            </div>
+            <div class="form-group">
+                <label>Prix d'achat (DH)</label>
+                <input type="number" id="modalPrix" placeholder="0.00" step="0.01">
+            </div>
+            <div class="form-group">
+                <label>Stock physique</label>
+                <input type="number" id="modalStock" placeholder="0" step="1">
+            </div>
+            <input type="hidden" id="modalEditIndex" value="-1">
+            <button class="btn btn-primary" id="btnSaveArticle">💾 Enregistrer</button>
+            <button class="btn btn-outline" id="btnCancelModal">Annuler</button>
+        </div>
+    </div>
+
+    <script>
+        // === DONNÉES ===
+        let baseArticles = JSON.parse(localStorage.getItem('baseArticles')) || [];
+        let saisies = JSON.parse(localStorage.getItem('saisies')) || [];
+
+        function sauvegarderBase() { localStorage.setItem('baseArticles', JSON.stringify(baseArticles)); }
+        function sauvegarderSaisies() { localStorage.setItem('saisies', JSON.stringify(saisies)); }
+
+        // === NAVIGATION ===
+        function showPage(pageName) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+            document.getElementById(pageName).classList.add('active');
+            document.querySelector(`.nav button[data-page="${pageName}"]`).classList.add('active');
+            if (pageName === 'base') afficherBase();
+            if (pageName === 'resultat') afficherResultats();
+            if (pageName === 'saisie') {
+                document.getElementById('codeArticle').focus();
+                afficherSaisies();
+            }
+        }
+
+        document.querySelectorAll('.nav button').forEach(btn => {
+            btn.addEventListener('click', (e) => showPage(e.target.dataset.page));
+        });
+
+        // === SAISIE ===
+        function ajouterSaisie() {
+            const code = document.getElementById('codeArticle').value.trim();
+            const comptage = parseInt(document.getElementById('comptage').value);
+            const msg = document.getElementById('messageSaisie');
+            if (!code) return msg.innerHTML = '<div class="alert alert-error">Code article requis</div>';
+            if (isNaN(comptage) || comptage < 0) return msg.innerHTML = '<div class="alert alert-error">Comptage invalide</div>';
+            const article = baseArticles.find(a => a.code === code);
+            if (!article) return msg.innerHTML = '<div class="alert alert-error">Article introuvable dans la base</div>';
+            const index = saisies.findIndex(s => s.code === code);
+            const nouvelle = { code, designation: article.designation, comptage, date: new Date().toLocaleTimeString() };
+            if (index !== -1) saisies[index] = nouvelle;
+            else saisies.push(nouvelle);
+            sauvegarderSaisies();
+            afficherSaisies();
+            msg.innerHTML = '<div class="alert alert-success">✅ Saisie enregistrée</div>';
+            document.getElementById('codeArticle').value = '';
+            document.getElementById('comptage').value = '';
+            document.getElementById('codeArticle').focus();
+        }
+
+        function afficherSaisies() {
+            const tbody = document.querySelector('#tableSaisies tbody');
+            tbody.innerHTML = '';
+            [...saisies].reverse().slice(0, 10).forEach(s => {
+                tbody.innerHTML += `<tr><td>${s.code}</td><td>${s.designation}</td><td>${s.comptage}</td><td>${s.date}</td></tr>`;
+            });
+        }
+
+        // === SCAN CAMÉRA (amélioré) ===
+        let html5QrCode = null;
+        let scanning = false;
+        const scanBtn = document.getElementById('scanToggle');
+        const readerDiv = document.getElementById('reader');
+
+        // Vérifier si le scan est possible (HTTPS ou localhost)
+        function isScanSupported() {
+            return (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+        }
+
+        scanBtn.addEventListener('click', () => {
+            if (!isScanSupported()) {
+                alert('Le scan nécessite une connexion sécurisée (HTTPS) ou un serveur local.\n\nSolutions :\n1. Utilisez un serveur local (ex: Live Server dans VS Code)\n2. Hébergez la page sur un site HTTPS\n3. Utilisez un émulateur HTTPS');
+                return;
+            }
+            if (!scanning) startScan();
+            else stopScan();
+        });
+
+        function startScan() {
+            if (!html5QrCode) {
+                html5QrCode = new Html5Qrcode("reader");
+            }
+            const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+            html5QrCode.start(
+                { facingMode: "environment" },
+                config,
+                (decodedText) => {
+                    document.getElementById('codeArticle').value = decodedText;
+                    stopScan();
+                    document.getElementById('comptage').focus();
+                    if (window.navigator.vibrate) window.navigator.vibrate(200);
+                },
+                (error) => {
+                    // Les erreurs de scan continu sont normales, on ne les affiche pas
+                }
+            ).then(() => {
+                scanning = true;
+                scanBtn.classList.add('scanning');
+                scanBtn.innerHTML = '⏹️';
+                readerDiv.classList.add('active');
+                document.getElementById('codeArticle').disabled = true;
+            }).catch(err => {
+                alert('Erreur lors de l\'ouverture de la caméra : ' + (err.message || err));
+                stopScan();
+            });
+        }
+
+        function stopScan() {
+            if (html5QrCode && scanning) {
+                html5QrCode.stop().then(() => {
+                    scanning = false;
+                    scanBtn.classList.remove('scanning');
+                    scanBtn.innerHTML = '📷';
+                    readerDiv.classList.remove('active');
+                    document.getElementById('codeArticle').disabled = false;
+                    document.getElementById('codeArticle').focus();
+                }).catch(err => console.error('Erreur arrêt scan:', err));
+            }
+        }
+
+        // Nettoyer le scan quand on quitte la page
+        window.addEventListener('pagehide', () => { if (scanning) stopScan(); });
+        window.addEventListener('beforeunload', () => { if (scanning) stopScan(); });
+
+        // === BASE DE DONNÉES ===
+        const messageBase = document.getElementById('messageBase');
+
+        function afficherBase() {
+            const tbody = document.querySelector('#tableBase tbody');
+            tbody.innerHTML = baseArticles.map((a, index) => `
+                <tr>
+                    <td>${a.code}</td>
+                    <td>${a.designation}</td>
+                    <td>${a.prix.toFixed(2)} DH</td>
+                    <td>${a.stock}</td>
+                    <td>
+                        <button class="icon-btn" onclick="modifierArticle(${index})" title="Modifier">✏️</button>
+                        <button class="icon-btn" onclick="supprimerArticle(${index})" title="Supprimer">🗑️</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Gestion de la modale
+        const modal = document.getElementById('articleModal');
+        document.getElementById('btnAjouterArticle').addEventListener('click', () => {
+            document.getElementById('modalTitle').textContent = 'Ajouter un article';
+            document.getElementById('modalCode').value = '';
+            document.getElementById('modalDesignation').value = '';
+            document.getElementById('modalPrix').value = '';
+            document.getElementById('modalStock').value = '';
+            document.getElementById('modalEditIndex').value = '-1';
+            modal.classList.add('active');
+        });
+
+        document.getElementById('btnCancelModal').addEventListener('click', () => {
+            modal.classList.remove('active');
+        });
+
+        document.getElementById('btnSaveArticle').addEventListener('click', () => {
+            const code = document.getElementById('modalCode').value.trim();
+            const designation = document.getElementById('modalDesignation').value.trim();
+            const prix = parseFloat(document.getElementById('modalPrix').value);
+            const stock = parseInt(document.getElementById('modalStock').value);
+            const editIndex = parseInt(document.getElementById('modalEditIndex').value);
+
+            if (!code || !designation) {
+                alert('Code et désignation obligatoires');
+                return;
+            }
+            if (isNaN(prix) || isNaN(stock)) {
+                alert('Prix et stock doivent être des nombres');
+                return;
+            }
+
+            const article = { code, designation, prix, stock };
+
+            if (editIndex === -1) {
+                if (baseArticles.some(a => a.code === code)) {
+                    alert('Un article avec ce code existe déjà');
+                    return;
+                }
+                baseArticles.push(article);
+            } else {
+                baseArticles[editIndex] = article;
+            }
+
+            sauvegarderBase();
+            afficherBase();
+            modal.classList.remove('active');
+            messageBase.innerHTML = '<div class="alert alert-success">✅ Article enregistré</div>';
+        });
+
+        window.modifierArticle = function(index) {
+            const article = baseArticles[index];
+            document.getElementById('modalTitle').textContent = 'Modifier l\'article';
+            document.getElementById('modalCode').value = article.code;
+            document.getElementById('modalDesignation').value = article.designation;
+            document.getElementById('modalPrix').value = article.prix;
+            document.getElementById('modalStock').value = article.stock;
+            document.getElementById('modalEditIndex').value = index;
+            modal.classList.add('active');
+        };
+
+        window.supprimerArticle = function(index) {
+            if (confirm('Supprimer cet article ?')) {
+                baseArticles.splice(index, 1);
+                sauvegarderBase();
+                afficherBase();
+                messageBase.innerHTML = '<div class="alert alert-success">Article supprimé</div>';
+            }
+        };
+
+        // Import Excel amélioré (résout le "fichier vide")
+        document.getElementById('btnImport').addEventListener('click', () => {
+            document.getElementById('fileInput').click();
+        });
+
+        document.getElementById('fileInput').addEventListener('change', importerExcel);
+
+        function importerExcel(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const wb = XLSX.read(data, { type: 'array' });
+
+                    if (!wb.SheetNames.length) {
+                        messageBase.innerHTML = '<div class="alert alert-error">Le fichier ne contient aucune feuille</div>';
+                        return;
+                    }
+
+                    const ws = wb.Sheets[wb.SheetNames[0]];
+                    if (!ws || !ws['!ref']) {
+                        messageBase.innerHTML = '<div class="alert alert-error">La feuille est vide ou n\'a pas de données</div>';
+                        return;
+                    }
+
+                    // Convertir avec header:1 pour obtenir toutes les lignes (y compris les vides)
+                    const allRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+                    if (allRows.length === 0) {
+                        messageBase.innerHTML = '<div class="alert alert-error">Aucune ligne trouvée dans le fichier</div>';
+                        return;
+                    }
+
+                    // Supprimer les lignes complètement vides
+                    const cleanRows = allRows.filter(row => row.some(cell => cell !== ''));
+                    if (cleanRows.length === 0) {
+                        messageBase.innerHTML = '<div class="alert alert-error">Toutes les lignes sont vides</div>';
+                        return;
+                    }
+
+                    // Détecter la ligne d'en-tête : on cherche la première ligne contenant au moins un mot-clé
+                    const keywords = ['code', 'désignation', 'designation', 'prix', 'stock', 'libellé', 'réf', 'ref'];
+                    let headerRowIndex = 0;
+                    for (let i = 0; i < cleanRows.length; i++) {
+                        const rowStr = cleanRows[i].join(' ').toLowerCase();
+                        if (keywords.some(kw => rowStr.includes(kw))) {
+                            headerRowIndex = i;
+                            break;
+                        }
+                    }
+
+                    const headerRow = cleanRows[headerRowIndex];
+                    const dataRows = cleanRows.slice(headerRowIndex + 1).filter(row => row.some(cell => cell !== ''));
+
+                    if (dataRows.length === 0) {
+                        messageBase.innerHTML = '<div class="alert alert-error">Aucune donnée après les en-têtes. Vérifiez le fichier.</div>';
+                        return;
+                    }
+
+                    // Construire un tableau d'objets à partir de l'en-tête détecté
+                    const headers = headerRow.map(h => h.toString().trim());
+                    const trouverCol = (noms) => {
+                        return noms.find(n => headers.some(h => h.toLowerCase().includes(n.toLowerCase()))) || headers.find(h => {
+                            return noms.some(n => h.toLowerCase().includes(n.toLowerCase()));
+                        });
+                    };
+
+                    const colCode = trouverCol(['code', 'réf', 'ref', 'ean', 'gtin']);
+                    const colDesignation = trouverCol(['désignation', 'designation', 'libellé', 'libelle', 'nom', 'produit']);
+                    const colPrix = trouverCol(['prix', 'achat', 'pa', 'prix d\'achat']);
+                    const colStock = trouverCol(['stock', 'physique', 'qté', 'quantité']);
+
+                    if (!colCode && !colDesignation) {
+                        messageBase.innerHTML = `<div class="alert alert-error">Colonnes non reconnues dans l'en-tête : ${headers.join(', ')}. <br>Attendus : Code, Désignation, Prix, Stock</div>`;
+                        return;
+                    }
+
+                    // Index des colonnes
+                    const idxCode = headers.indexOf(colCode);
+                    const idxDes = headers.indexOf(colDesignation);
+                    const idxPrix = headers.indexOf(colPrix);
+                    const idxStock = headers.indexOf(colStock);
+
+                    baseArticles = dataRows.map(row => {
+                        const code = (idxCode >= 0 ? row[idxCode] : '').toString().trim();
+                        const designation = (idxDes >= 0 ? row[idxDes] : '').toString().trim();
+                        const prix = parseFloat((idxPrix >= 0 ? row[idxPrix] : 0).toString().replace(',', '.'));
+                        const stock = parseInt((idxStock >= 0 ? row[idxStock] : 0));
+                        return { code, designation, prix: isNaN(prix) ? 0 : prix, stock: isNaN(stock) ? 0 : stock };
+                    }).filter(a => a.code && a.designation);
+
+                    if (baseArticles.length === 0) {
+                        messageBase.innerHTML = '<div class="alert alert-error">Aucun article valide après filtrage. Vérifiez les colonnes.</div>';
+                        return;
+                    }
+
+                    sauvegarderBase();
+                    afficherBase();
+                    messageBase.innerHTML = `<div class="alert alert-success">✅ ${baseArticles.length} articles importés avec succès</div>`;
+
+                    // Mise à jour des désignations dans les saisies
+                    saisies.forEach(s => {
+                        const art = baseArticles.find(a => a.code === s.code);
+                        if (art) s.designation = art.designation;
+                    });
+                    sauvegarderSaisies();
+
+                } catch (error) {
+                    messageBase.innerHTML = `<div class="alert alert-error">Erreur : ${error.message}. Vérifiez que le fichier est un Excel valide (.xlsx ou .xls)</div>`;
+                    console.error(error);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        document.getElementById('btnExportBase').addEventListener('click', () => {
+            if (!baseArticles.length) return alert('Base vide');
+            const data = [['Code', 'Désignation', 'Prix d\'achat (DH)', 'Stock physique'],
+                ...baseArticles.map(a => [a.code, a.designation, a.prix, a.stock])];
+            const ws = XLSX.utils.aoa_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Base");
+            XLSX.writeFile(wb, "base_articles.xlsx");
+        });
+
+        document.getElementById('btnViderBase').addEventListener('click', () => {
+            if (confirm('Vider toute la base et les saisies ?')) {
+                baseArticles = [];
+                saisies = [];
+                sauvegarderBase();
+                sauvegarderSaisies();
+                afficherBase();
+                afficherSaisies();
+                messageBase.innerHTML = '<div class="alert alert-success">Base vidée</div>';
+            }
+        });
+
+        // === RÉSULTATS (devise DH) ===
+        function afficherResultats() {
+            const tbody = document.querySelector('#tableResultat tbody');
+            let nbEcarts = 0, valeurTotale = 0;
+            tbody.innerHTML = baseArticles.map(article => {
+                const saisie = saisies.find(s => s.code === article.code);
+                const comptage = saisie ? saisie.comptage : 0;
+                const ecart = comptage - article.stock;
+                const valEcart = ecart * article.prix;
+                if (ecart !== 0) { nbEcarts++; valeurTotale += Math.abs(valEcart); }
+                const couleur = ecart < 0 ? 'color:#dc2626' : (ecart > 0 ? 'color:#059669' : '');
+                return `<tr>
+                    <td>${article.code}</td><td>${article.designation}</td>
+                    <td>${article.prix.toFixed(2)} DH</td><td>${article.stock}</td>
+                    <td>${saisie ? comptage : '-'}</td>
+                    <td style="font-weight:bold;${couleur}">${ecart !== 0 ? (ecart > 0 ? '+' : '') + ecart : '0'}</td>
+                    <td style="font-weight:bold;${couleur}">${valEcart !== 0 ? (valEcart > 0 ? '+' : '') + valEcart.toFixed(2) + ' DH' : '0 DH'}</td>
+                </tr>`;
+            }).join('');
+
+            document.getElementById('statsContainer').innerHTML = `
+                <div class="stat-card"><h3>Articles base</h3><div class="value">${baseArticles.length}</div></div>
+                <div class="stat-card"><h3>Comptés</h3><div class="value">${saisies.length}</div></div>
+                <div class="stat-card"><h3>Écarts</h3><div class="value">${nbEcarts}</div></div>
+                <div class="stat-card"><h3>Val. écarts</h3><div class="value">${valeurTotale.toFixed(2)} DH</div></div>`;
+        }
+
+        document.getElementById('btnActualiser').addEventListener('click', () => {
+            afficherResultats();
+            document.getElementById('messageResultat').innerHTML = '<div class="alert alert-success">✅ Actualisé</div>';
+        });
+
+        document.getElementById('btnExportResExcel').addEventListener('click', () => {
+            const data = [['Code', 'Désignation', 'Prix Achat (DH)', 'Stock Physique', 'Comptage', 'Écart Qté', 'Valeur Écart (DH)'],
+                ...baseArticles.map(a => {
+                    const s = saisies.find(s => s.code === a.code);
+                    const c = s ? s.comptage : 0;
+                    const e = c - a.stock;
+                    return [a.code, a.designation, a.prix, a.stock, c, e, (e * a.prix).toFixed(2)];
+                })];
+            const ws = XLSX.utils.aoa_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Résultats");
+            XLSX.writeFile(wb, "resultats_inventaire.xlsx");
+        });
+
+        document.getElementById('btnExportResPDF').addEventListener('click', () => {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            doc.setFontSize(16);
+            doc.text('Résultats d\'inventaire Dream Market', 14, 20);
+            doc.autoTable({
+                head: [['Code', 'Désignation', 'Prix (DH)', 'Stock', 'Comptage', 'Écart', 'Val. Écart (DH)']],
+                body: baseArticles.map(a => {
+                    const s = saisies.find(s => s.code === a.code);
+                    const c = s ? s.comptage : 0;
+                    const e = c - a.stock;
+                    return [a.code, a.designation, `${a.prix.toFixed(2)} DH`, a.stock, c, e, `${(e * a.prix).toFixed(2)} DH`];
+                }),
+                startY: 30,
+                styles: { fontSize: 7 },
+                headStyles: { fillColor: [79, 70, 229] }
+            });
+            doc.save('resultats_inventaire.pdf');
+        });
+
+        // Événements touches
+        document.getElementById('codeArticle').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('comptage').focus(); }
+        });
+        document.getElementById('comptage').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); ajouterSaisie(); }
+        });
+
+        document.getElementById('btnValider').addEventListener('click', ajouterSaisie);
+        document.getElementById('btnReset').addEventListener('click', () => {
+            document.getElementById('codeArticle').value = '';
+            document.getElementById('comptage').value = '';
+            document.getElementById('codeArticle').focus();
+        });
+
+        // Initialisation
+        afficherBase();
+        afficherSaisies();
+    </script>
+</body>
+</html>
