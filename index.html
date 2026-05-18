@@ -62,6 +62,7 @@
         .header {
             background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
             color: white;
+            padding: 20px 166px;
             padding: 20px 16px;
             text-align: center;
             position: sticky;
@@ -157,7 +158,7 @@
             margin-bottom: 8px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            }
+        }
 
         .input-with-scan {
             display: flex;
@@ -208,13 +209,6 @@
         .scan-btn.scanning {
             background: var(--danger);
             box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
-            animation: pulse 1.5s infinite;
-        }
-
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.8; }
-            100% { opacity: 1; }
         }
 
         #reader {
@@ -265,9 +259,6 @@
             background: transparent;
             border: 1px solid var(--border);
             color: var(--text-main);
-        }
-        .btn-outline:hover {
-            background: #f1f5f9;
         }
 
         .btn-group {
@@ -327,10 +318,6 @@
             color: var(--text-main);
         }
 
-        tr:last-child td {
-            border-bottom: none;
-        }
-
         .badge {
             display: inline-block;
             padding: 4px 8px;
@@ -350,10 +337,7 @@
             cursor: pointer;
             color: var(--text-muted);
             border-radius: 8px;
-            transition: all 0.2s;
         }
-
-        .icon-btn:hover { background: #f1f5f9; color: var(--primary); }
 
         .modal {
             display: none;
@@ -369,9 +353,7 @@
             z-index: 200;
         }
 
-        .modal.active {
-            display: flex;
-        }
+        .modal.active { display: flex; }
 
         .modal-content {
             background: var(--surface);
@@ -380,12 +362,6 @@
             width: 92%;
             max-width: 440px;
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-            animation: modalUp 0.25s ease-out;
-        }
-
-        @keyframes modalUp {
-            from { transform: scale(0.9) translateY(20px); opacity: 0; }
-            to { transform: scale(1) translateY(0); opacity: 1; }
         }
 
         .stats {
@@ -439,10 +415,7 @@
                 box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.1);
                 border: 1px solid var(--border);
             }
-            .header {
-                border-top-left-radius: 23px;
-                border-top-right-radius: 23px;
-            }
+            .header { border-top-left-radius: 23px; border-top-right-radius: 23px; }
         }
     </style>
 </head>
@@ -466,6 +439,7 @@
                             <input type="text" id="codeArticle" placeholder="Scanner ou saisir le code..." autofocus>
                             <button class="scan-btn" id="scanToggle" title="Scanner avec la caméra">📷</button>
                         </div>
+                        <input type="file" id="cameraFileInput" accept="image/*" capture="environment" style="display:none">
                         <div id="reader"></div>
                     </div>
                     <div class="form-group">
@@ -597,7 +571,7 @@
             
             sauvegarderSaisies();
             afficherSaisies();
-            msg.innerHTML = '<div class="alert alert-success">✅ Saisie enregistrée avec succès</div>';
+            msg.innerHTML = '<div class="alert alert-success">✅ Saisie enregistrée</div>';
             
             document.getElementById('codeArticle').value = '';
             document.getElementById('comptage').value = '';
@@ -613,107 +587,83 @@
             });
         }
 
-        // === SCAN CAMÉRA MULTI-NAVIGATEURS (CORRIGÉ) ===
+        // === SCAN CAMÉRA ULTRA-COMPATIBLE (CORRIGÉ POUR CHROME/EDGE) ===
         let html5QrCode = null;
         let scanning = false;
         const scanBtn = document.getElementById('scanToggle');
         const readerDiv = document.getElementById('reader');
+        const cameraFileInput = document.getElementById('cameraFileInput');
 
-        scanBtn.addEventListener('click', async () => {
-            if (!scanning) {
-                try {
-                    // Demande d'autorisation de base
-                    await navigator.mediaDevices.getUserMedia({ video: true });
-                    startScan();
-                } catch (err) {
-                    alert("Accès caméra refusé. Vérifiez les autorisations dans les réglages de votre navigateur.");
-                }
-            } else {
+        scanBtn.addEventListener('click', () => {
+            if (scanning) {
                 stopScan();
+                return;
             }
-        });
-
-        function startScan() {
-            if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
-            readerDiv.classList.add('active');
             
-            const config = { 
-                fps: 20, 
-                qrbox: (w, h) => { return { width: Math.min(w * 0.8, 280), height: 160 }; },
-                aspectRatio: 1.777778
-            };
+            // Initialisation de la librairie s'il n'existe pas
+            if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
 
-            // ÉTAPE 1 : Lister tous les capteurs photo disponibles sur le téléphone
-            Html5Qrcode.getCameras().then(cameras => {
-                if (cameras && cameras.length > 0) {
-                    // Cherche une caméra dont le nom contient "back", "arrière", "environment" ou "rear"
-                    let backCamera = cameras.find(c => {
-                        const name = c.label.toLowerCase();
-                        return name.includes('back') || name.includes('arrière') || name.includes('rear') || name.includes('environ');
-                    });
-                    
-                    // Si on ne trouve pas de mot-clé, on prend par défaut la DERNIÈRE caméra de la liste
-                    // (Sur Chrome/Edge mobile, la caméra arrière principale est quasi toujours la dernière)
-                    const cameraId = backCamera ? backCamera.id : cameras[cameras.length - 1].id;
+            // TENTATIVE 1 : Lancement du flux vidéo en direct (Idéal Safari & Android)
+            readerDiv.classList.add('active');
+            const config = { fps: 20, qrbox: (w, h) => { return { width: Math.min(w * 0.8, 280), height: 160 }; } };
 
-                    // Lance le scan avec l'ID précis trouvé pour contourner le bug "undefined"
-                    html5QrCode.start(
-                        cameraId, 
-                        config,
-                        (decodedText) => {
-                            document.getElementById('codeArticle').value = decodedText;
-                            stopScan();
-                            if (window.navigator.vibrate) window.navigator.vibrate([100, 50, 100]);
-                            setTimeout(() => { document.getElementById('comptage').focus(); }, 200);
-                        },
-                        () => {}
-                    ).then(() => {
-                        scanning = true;
-                        scanBtn.classList.add('scanning');
-                        scanBtn.innerHTML = '⏹️';
-                    }).catch(err => {
-                        fallbackFacingMode(config);
-                    });
-                } else {
-                    fallbackFacingMode(config);
-                }
-            }).catch(() => {
-                fallbackFacingMode(config);
-            });
-        }
-
-        // Système de secours si la détection par liste d'ID échoue
-        function fallbackFacingMode(config) {
-            html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
-                document.getElementById('codeArticle').value = decodedText;
-                stopScan();
-                if (window.navigator.vibrate) window.navigator.vibrate(100);
-                setTimeout(() => { document.getElementById('comptage').focus(); }, 200);
-            }).then(() => {
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                config,
+                (decodedText) => { successScan(decodedText); },
+                () => {}
+            ).then(() => {
                 scanning = true;
                 scanBtn.classList.add('scanning');
                 scanBtn.innerHTML = '⏹️';
-            }).catch(e => {
-                alert('Erreur caméra : ' + e.message);
+            }).catch(err => {
+                // TENTATIVE 2 : Si le navigateur (Chrome/Edge iOS) bloque le flux ou renvoie "undefined"
+                console.log("Flux direct bloqué ou indisponible, passage au mode photo natif.");
                 stopScan();
+                // On déclenche l'appareil photo natif du smartphone de manière transparente !
+                cameraFileInput.click();
             });
+        });
+
+        // Événement déclenché quand l'utilisateur prend sa photo sur Chrome / Edge
+        cameraFileInput.addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
+
+            // La librairie scanne directement l'image capturée par l'appareil photo natif
+            html5QrCode.scanFile(file, true)
+                .then(decodedText => {
+                    successScan(decodedText);
+                    cameraFileInput.value = ''; // Reset
+                })
+                .catch(err => {
+                    alert("Impossible de lire le code-barres sur la photo. Essayez de bien centrer le code et d'éviter les reflets.");
+                    cameraFileInput.value = '';
+                });
+        });
+
+        function successScan(text) {
+            document.getElementById('codeArticle').value = text;
+            stopScan();
+            if (window.navigator.vibrate) window.navigator.vibrate([100, 50, 100]);
+            setTimeout(() => { document.getElementById('comptage').focus(); }, 200);
         }
 
         function stopScan() {
             if (html5QrCode && scanning) {
-                html5QrCode.stop().then(() => {
-                    scanning = false;
-                    scanBtn.classList.remove('scanning');
-                    scanBtn.innerHTML = '📷';
-                    readerDiv.classList.remove('active');
-                    document.getElementById('codeArticle').focus();
-                }).catch(() => {
-                    scanning = false;
-                    scanBtn.classList.remove('scanning');
-                    scanBtn.innerHTML = '📷';
-                    readerDiv.classList.remove('active');
-                });
+                html5QrCode.stop().then(() => { resetScanUI(); }).catch(() => { resetScanUI(); });
+            } else {
+                resetScanUI();
             }
+        }
+
+        function resetScanUI() {
+            scanning = false;
+            scanBtn.classList.remove('scanning');
+            scanBtn.innerHTML = '📷';
+            readerDiv.classList.remove('active');
         }
 
         // === BASE DE DONNÉES ===
