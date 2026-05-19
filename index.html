@@ -8,157 +8,454 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --red: #e8181c;
+            --red-dark: #c0151a;
+            --red-light: #ffeaea;
+            --yellow: #f5c300;
+            --yellow-dark: #d4a800;
+            --yellow-light: #fffbe0;
+            --blue: #1a4fa0;
+            --blue-light: #e8eeff;
+            --green: #2d8a4e;
+            --green-dark: #1e6035;
+            --white: #ffffff;
+            --bg: #f5f6fa;
+            --text: #1a1a2e;
+            --text-muted: #6b7280;
+            --border: #e5e7eb;
+            --shadow: 0 4px 16px rgba(0,0,0,0.10);
+        }
         * { margin:0; padding:0; box-sizing:border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f0f2f5; min-height:100vh; touch-action:manipulation;
-            -webkit-user-select:none; user-select:none;
+            font-family: 'Nunito', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            min-height: 100vh;
+            touch-action: manipulation;
+            -webkit-user-select: none;
+            user-select: none;
+            color: var(--text);
         }
-        .app { max-width:100%; margin:0 auto; background:white; min-height:100vh; display:flex; flex-direction:column; box-shadow:0 0 20px rgba(0,0,0,0.05); }
+
+        /* ── APP SHELL ── */
+        .app {
+            max-width: 100%;
+            margin: 0 auto;
+            background: var(--white);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── HEADER ── */
         .header {
-            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-            color: white; padding: 16px; text-align: center; position: sticky; top:0; z-index:100;
+            background: var(--red);
+            padding: 0 16px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 3px 12px rgba(232,24,28,0.35);
         }
-        .header h1 { font-size:1.4em; display:flex; align-items:center; justify-content:center; gap:8px; }
+        .header-inner {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 0;
+        }
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            flex-shrink: 0;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.25));
+        }
+        .logo-text {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.1;
+        }
+        .logo-text .dream {
+            font-size: 1.55em;
+            font-weight: 900;
+            color: var(--white);
+            letter-spacing: -0.5px;
+        }
+        .logo-text .market {
+            font-size: 1.1em;
+            font-weight: 800;
+            color: var(--yellow);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+        .header-title {
+            margin-left: auto;
+            text-align: right;
+        }
+        .header-title span {
+            display: block;
+            color: rgba(255,255,255,0.85);
+            font-size: 0.75em;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* ── NAV ── */
         .nav {
-            display:flex; background:white; border-bottom:1px solid #e5e7eb;
-            position: sticky; top:70px; z-index:99;
+            display: flex;
+            background: var(--white);
+            border-bottom: 3px solid var(--yellow);
+            position: sticky;
+            top: 68px;
+            z-index: 99;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
         }
         .nav button {
-            flex:1; padding:12px 8px; border:none; background:transparent;
-            font-size:0.9em; font-weight:600; color:#6b7280;
-            border-bottom:3px solid transparent; transition:all 0.2s; white-space:nowrap;
+            flex: 1;
+            padding: 13px 8px 11px;
+            border: none;
+            background: transparent;
+            font-family: 'Nunito', sans-serif;
+            font-size: 0.88em;
+            font-weight: 800;
+            color: var(--text-muted);
+            border-bottom: 3px solid transparent;
+            margin-bottom: -3px;
+            transition: all 0.2s;
+            white-space: nowrap;
         }
-        .nav button.active { color:#4f46e5; border-bottom-color:#4f46e5; background:#f5f3ff; }
-        .content { flex:1; padding:16px; overflow-y:auto; }
-        .page { display:none; }
-        .page.active { display:block; }
-        .card { background:white; border-radius:16px; padding:20px; margin-bottom:16px; box-shadow:0 2px 8px rgba(0,0,0,0.05); }
-        .form-group { margin-bottom:16px; }
-        .form-group label { display:block; font-size:0.85em; font-weight:600; color:#374151; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px; }
-        .input-with-scan { position:relative; display:flex; align-items:center; }
-        .input-with-scan input {
-            flex:1; padding:14px 16px; border:2px solid #e5e7eb; border-radius:12px;
-            font-size:1em; transition:all 0.2s; background:#f9fafb; min-width:0;
+        .nav button.active {
+            color: var(--red);
+            border-bottom-color: var(--red);
+            background: var(--red-light);
         }
-        .input-with-scan input:focus { outline:none; border-color:#4f46e5; background:white; box-shadow:0 0 0 3px rgba(79,70,229,0.1); }
-        .scan-btn {
-            margin-left:8px; padding:14px; background:#4f46e5; color:white; border:none;
-            border-radius:12px; font-size:1.2em; cursor:pointer; display:flex; align-items:center;
-            justify-content:center; min-width:50px; transition:background 0.2s; flex-shrink:0;
+
+        /* ── CONTENT ── */
+        .content { flex: 1; padding: 16px; overflow-y: auto; background: var(--bg); }
+        .page { display: none; }
+        .page.active { display: block; }
+
+        /* ── CARDS ── */
+        .card {
+            background: var(--white);
+            border-radius: 16px;
+            padding: 18px;
+            margin-bottom: 14px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
         }
-        .scan-btn:active { background:#4338ca; transform:scale(0.96); }
-        .scan-btn.scanning { background:#dc2626; animation:pulse 1.5s infinite; }
-        @keyframes pulse { 0%{opacity:1;} 50%{opacity:0.7;} 100%{opacity:1;} }
-        #reader {
-            width: 100%; border-radius:12px; overflow:hidden; margin-top:8px;
-            display:none; min-height:300px; background:#000;
+        .card-title {
+            font-size: 1em;
+            font-weight: 800;
+            color: var(--text);
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
-        #reader.active { display:block; }
-        #reader video { width:100% !important; height:auto !important; object-fit:cover; border-radius:12px; }
-        .btn {
-            width:100%; padding:14px; border:none; border-radius:12px; font-size:1em;
-            font-weight:600; cursor:pointer; transition:all 0.2s; text-transform:uppercase;
-            letter-spacing:0.5px; margin-bottom:8px; display:flex; align-items:center; justify-content:center; gap:8px;
-        }
-        .btn:active { transform:scale(0.98); }
-        .btn-primary { background:#4f46e5; color:white; }
-        .btn-success { background:#10b981; color:white; }
-        .btn-warning { background:#f59e0b; color:white; }
-        .btn-info { background:#3b82f6; color:white; }
-        .btn-danger { background:#ef4444; color:white; }
-        .btn-outline { background:white; border:2px solid #4f46e5; color:#4f46e5; }
-        .btn:disabled { opacity:0.5; pointer-events:none; }
-        .btn-group { display:flex; flex-wrap:wrap; gap:10px; margin:16px 0; }
-        .btn-group .btn { flex:1; min-width:120px; }
-        .alert { padding:12px 16px; border-radius:12px; margin:12px 0; font-size:0.9em; font-weight:500; }
-        .alert-success { background:#d1fae5; color:#065f46; }
-        .alert-error { background:#fee2e2; color:#991b1b; }
-        .alert-info { background:#dbeafe; color:#1e40af; }
-        table { width:100%; border-collapse:collapse; font-size:0.8em; background:white; border-radius:12px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,0.05); }
-        th { background:#f3f4f6; padding:12px 8px; text-align:left; font-weight:600; color:#374151; white-space:nowrap; }
-        td { padding:10px 8px; border-bottom:1px solid #f3f4f6; }
-        .table-container { overflow-x:auto; -webkit-overflow-scrolling:touch; margin:16px 0; }
-        .icon-btn { background:none; border:none; font-size:1.2em; padding:4px 8px; cursor:pointer; color:#6b7280; }
-        .icon-btn:active { color:#4f46e5; }
-        .modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; z-index:200; }
-        .modal.active { display:flex; }
-        .modal-content { background:white; border-radius:16px; padding:24px; width:90%; max-width:400px; max-height:80vh; overflow-y:auto; }
-        .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px,1fr)); gap:12px; margin:16px 0; }
-        .stat-card {
-            background: linear-gradient(135deg, #4f46e5, #7c3aed); color:white; padding:16px; border-radius:12px; text-align:center;
-        }
-        .stat-card h3 { font-size:0.75em; opacity:0.9; margin-bottom:6px; }
-        .stat-card .value { font-size:1.5em; font-weight:bold; }
-        select {
-            width:100%; padding:14px; border:2px solid #e5e7eb; border-radius:12px;
-            font-size:1em; background:#f9fafb; appearance:none; -webkit-appearance:none;
-            background-image:url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-            background-repeat:no-repeat; background-position:right 12px center; background-size:20px;
-        }
-        
-        /* Barre de progression */
-        .progress-container {
-            width: 100%;
-            background: #e5e7eb;
-            border-radius: 12px;
-            overflow: hidden;
-            margin: 12px 0;
-            height: 8px;
-        }
-        .progress-bar {
-            height: 100%;
-            background: linear-gradient(90deg, #4f46e5, #7c3aed);
-            width: 0%;
-            transition: width 0.3s ease;
-            border-radius: 12px;
-        }
-        .progress-text {
-            text-align: center;
-            font-size: 0.85em;
-            color: #6b7280;
-            margin-top: 4px;
-        }
-        .spinner {
+        .card-title::before {
+            content: '';
             display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid rgba(255,255,255,.3);
-            border-radius: 50%;
-            border-top-color: #fff;
-            animation: spin 1s ease-in-out infinite;
+            width: 4px;
+            height: 18px;
+            background: var(--red);
+            border-radius: 4px;
+        }
+
+        /* ── FORM ── */
+        .form-group { margin-bottom: 14px; }
+        .form-group label {
+            display: block;
+            font-size: 0.78em;
+            font-weight: 800;
+            color: var(--text-muted);
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+        }
+        .input-with-scan { position: relative; display: flex; align-items: center; }
+        .input-with-scan input, input[type="text"], input[type="number"] {
+            flex: 1;
+            padding: 13px 16px;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            font-family: 'Nunito', sans-serif;
+            font-size: 1em;
+            font-weight: 600;
+            transition: all 0.2s;
+            background: #f9fafb;
+            min-width: 0;
+            color: var(--text);
+        }
+        input:focus {
+            outline: none;
+            border-color: var(--red);
+            background: var(--white);
+            box-shadow: 0 0 0 3px rgba(232,24,28,0.12);
+        }
+
+        .scan-btn {
+            margin-left: 8px;
+            padding: 13px;
+            background: var(--red);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.2em;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 50px;
+            transition: background 0.2s;
+            flex-shrink: 0;
+        }
+        .scan-btn:active { background: var(--red-dark); transform: scale(0.96); }
+        .scan-btn.scanning { background: #dc2626; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%{opacity:1;} 50%{opacity:0.7;} 100%{opacity:1;} }
+
+        #reader {
+            width: 100%; border-radius: 12px; overflow: hidden; margin-top: 8px;
+            display: none; min-height: 300px; background: #000;
+        }
+        #reader.active { display: block; }
+        #reader video { width: 100% !important; height: auto !important; object-fit: cover; border-radius: 12px; }
+
+        /* ── BUTTONS ── */
+        .btn {
+            width: 100%;
+            padding: 13px 18px;
+            border: none;
+            border-radius: 12px;
+            font-family: 'Nunito', sans-serif;
+            font-size: 0.95em;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.18s;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .btn:active { transform: scale(0.97); }
+        .btn-primary   { background: var(--red); color: white; box-shadow: 0 3px 10px rgba(232,24,28,0.3); }
+        .btn-primary:hover { background: var(--red-dark); }
+        .btn-success   { background: var(--green); color: white; box-shadow: 0 3px 10px rgba(45,138,78,0.25); }
+        .btn-warning   { background: var(--yellow); color: var(--text); box-shadow: 0 3px 10px rgba(245,195,0,0.3); }
+        .btn-info      { background: var(--blue); color: white; box-shadow: 0 3px 10px rgba(26,79,160,0.25); }
+        .btn-danger    { background: #ef4444; color: white; }
+        .btn-outline   { background: white; border: 2px solid var(--red); color: var(--red); }
+        .btn:disabled  { opacity: 0.5; pointer-events: none; }
+        .btn-group     { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+        .btn-group .btn { flex: 1; min-width: 120px; margin-bottom: 0; }
+
+        /* ── ALERTS ── */
+        .alert {
+            padding: 12px 16px;
+            border-radius: 12px;
+            margin: 10px 0;
+            font-size: 0.88em;
+            font-weight: 700;
+            border-left: 4px solid transparent;
+        }
+        .alert-success { background: #d1fae5; color: #065f46; border-color: var(--green); }
+        .alert-error   { background: #fee2e2; color: #991b1b; border-color: var(--red); }
+        .alert-info    { background: var(--blue-light); color: var(--blue); border-color: var(--blue); }
+        .alert-warning { background: var(--yellow-light); color: #78500a; border-color: var(--yellow); }
+
+        /* ── TABLE ── */
+        .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 14px 0; border-radius: 12px; box-shadow: var(--shadow); }
+        table { width: 100%; border-collapse: collapse; font-size: 0.8em; background: white; }
+        th {
+            background: var(--red);
+            color: white;
+            padding: 12px 10px;
+            text-align: left;
+            font-weight: 800;
+            font-size: 0.85em;
+            letter-spacing: 0.3px;
+            white-space: nowrap;
+        }
+        th:first-child { border-radius: 0; }
+        td { padding: 10px 10px; border-bottom: 1px solid var(--border); font-weight: 600; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: var(--red-light); }
+        .icon-btn { background: none; border: none; font-size: 1.1em; padding: 4px 6px; cursor: pointer; color: var(--text-muted); border-radius: 8px; }
+        .icon-btn:active { color: var(--red); background: var(--red-light); }
+
+        /* ── MODAL ── */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.55); justify-content: center; align-items: center; z-index: 200; }
+        .modal.active { display: flex; }
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            padding: 24px;
+            width: 92%;
+            max-width: 400px;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .modal-content h3 {
+            font-size: 1.1em;
+            font-weight: 900;
+            color: var(--red);
+            margin-bottom: 18px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--yellow);
+        }
+        .modal-content input {
+            width: 100%;
+            padding: 12px 14px;
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            font-family: 'Nunito', sans-serif;
+            font-size: 0.95em;
+            font-weight: 600;
+            background: #f9fafb;
+        }
+
+        /* ── STATS ── */
+        .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 14px 0; }
+        .stat-card {
+            padding: 14px;
+            border-radius: 14px;
+            text-align: center;
+        }
+        .stat-card:nth-child(1) { background: var(--red); color: white; }
+        .stat-card:nth-child(2) { background: var(--blue); color: white; }
+        .stat-card:nth-child(3) { background: var(--yellow); color: var(--text); }
+        .stat-card:nth-child(4) { background: var(--green); color: white; }
+        .stat-card h3 { font-size: 0.72em; opacity: 0.88; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 800; }
+        .stat-card .value { font-size: 1.45em; font-weight: 900; }
+
+        /* ── SELECT ── */
+        select {
+            width: 100%;
+            padding: 13px 40px 13px 14px;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            font-family: 'Nunito', sans-serif;
+            font-size: 0.95em;
+            font-weight: 700;
+            background: #f9fafb;
+            appearance: none;
+            -webkit-appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e8181c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 20px;
+            color: var(--text);
+        }
+        select:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 3px rgba(232,24,28,0.12); }
+
+        /* ── PROGRESS ── */
+        .progress-container { width: 100%; background: var(--border); border-radius: 12px; overflow: hidden; margin: 12px 0; height: 10px; }
+        .progress-bar { height: 100%; background: linear-gradient(90deg, var(--red), var(--yellow)); width: 0%; transition: width 0.3s ease; border-radius: 12px; }
+        .progress-text { text-align: center; font-size: 0.82em; font-weight: 700; color: var(--text-muted); margin-top: 5px; }
+
+        .spinner {
+            display: inline-block; width: 18px; height: 18px;
+            border: 3px solid rgba(255,255,255,.35); border-radius: 50%;
+            border-top-color: #fff; animation: spin 0.9s ease-in-out infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-        
-        @media (min-width:768px) {
-            .app { max-width:768px; margin:20px auto; border-radius:24px; min-height:auto; box-shadow:0 25px 50px rgba(0,0,0,0.15); }
-            .btn { width:auto; }
-            .btn-group .btn { flex:initial; }
+
+        /* ── BADGE ── */
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 0.72em;
+            font-weight: 800;
+            background: var(--yellow);
+            color: var(--text);
+            margin-left: 6px;
+        }
+
+        /* ── TYPE SELECTOR (Saisie) ── */
+        .type-tabs { display: flex; gap: 10px; margin-bottom: 14px; }
+        .type-tab {
+            flex: 1;
+            padding: 10px;
+            border-radius: 12px;
+            border: 2px solid var(--border);
+            background: white;
+            font-family: 'Nunito', sans-serif;
+            font-size: 0.85em;
+            font-weight: 800;
+            cursor: pointer;
+            text-align: center;
+            color: var(--text-muted);
+            transition: all 0.2s;
+        }
+        .type-tab.active {
+            border-color: var(--red);
+            background: var(--red-light);
+            color: var(--red);
+        }
+
+        @media (min-width: 768px) {
+            .app { max-width: 768px; margin: 20px auto; border-radius: 24px; min-height: auto; box-shadow: 0 30px 60px rgba(0,0,0,0.18); }
+            .btn { width: auto; }
+            .btn-group .btn { flex: initial; }
+            .stats { grid-template-columns: repeat(4, 1fr); }
         }
     </style>
 </head>
 <body>
 <div class="app">
+
+    <!-- HEADER -->
     <div class="header">
-        <h1>📦 Inventaire Dream Market</h1>
+        <div class="header-inner">
+            <!-- Inline SVG logo inspiré du vrai logo Dream Market -->
+            <svg class="logo-icon" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <!-- Panier -->
+                <path d="M15 25 L20 25 L30 65 L75 65 L85 35 L25 35" stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                <!-- Roues -->
+                <circle cx="38" cy="74" r="7" fill="#fff"/>
+                <circle cx="68" cy="74" r="7" fill="#fff"/>
+                <!-- Lettre D stylisée -->
+                <path d="M32 40 L32 58 L44 58 C52 58 56 54 56 49 C56 44 52 40 44 40 Z" fill="#f5c300" stroke="none"/>
+                <circle cx="38" cy="74" r="3" fill="#e8181c"/>
+                <circle cx="68" cy="74" r="3" fill="#e8181c"/>
+            </svg>
+            <div class="logo-text">
+                <span class="dream">Dream</span>
+                <span class="market">Market</span>
+            </div>
+            <div class="header-title">
+                <span>📦 Inventaire</span>
+            </div>
+        </div>
     </div>
+
+    <!-- NAV -->
     <div class="nav">
         <button class="active" data-page="saisie">📝 Saisie</button>
         <button data-page="base">📂 Base</button>
         <button data-page="resultat">📊 Résultats</button>
     </div>
+
     <div class="content">
-        <!-- Page Saisie -->
+
+        <!-- ═══ PAGE SAISIE ═══ -->
         <div id="saisie" class="page active">
             <div class="card">
-                <div class="form-group">
-                    <label>Type d'inventaire</label>
-                    <select id="inventaireType">
-                        <option value="general">📋 Inventaire Général</option>
-                        <option value="tournant">🔄 Inventaire Tournant</option>
-                    </select>
+                <div class="card-title">Type d'inventaire</div>
+                <div class="type-tabs">
+                    <button class="type-tab active" id="tabGeneral" onclick="setType('general')">📋 Général</button>
+                    <button class="type-tab" id="tabTournant" onclick="setType('tournant')">🔄 Tournant</button>
                 </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Saisie article</div>
                 <div class="form-group">
                     <label>Code Article</label>
                     <div class="input-with-scan">
@@ -166,17 +463,18 @@
                         <button class="scan-btn" id="scanToggle" title="Scanner avec la caméra">📷</button>
                     </div>
                     <div id="reader"></div>
-                    <div id="scanStatus" style="margin-top:8px; font-size:0.8em; color:#6b7280;"></div>
+                    <div id="scanStatus" style="margin-top:8px;font-size:0.82em;color:var(--text-muted);"></div>
                 </div>
                 <div class="form-group">
-                    <label>Comptage REEL</label>
-                    <input type="number" id="comptage" placeholder="Quantité comptée..." min="0" style="width:100%; padding:14px; border:2px solid #e5e7eb; border-radius:12px; font-size:1em;">
+                    <label>Comptage Physique</label>
+                    <input type="number" id="comptage" placeholder="Quantité comptée..." min="0" style="width:100%;">
                 </div>
                 <button class="btn btn-primary" id="btnValider">✅ Valider la Saisie</button>
-                <button class="btn btn-warning" id="btnReset">🔄 Réinitialiser</button>
+                <button class="btn btn-outline" id="btnReset">🔄 Réinitialiser</button>
                 <div id="messageSaisie"></div>
             </div>
-            <h3 style="margin:20px 0 10px;">Dernières saisies</h3>
+
+            <div class="card-title" style="margin:4px 0 10px;">Dernières saisies <span id="saisieCount" class="badge">0</span></div>
             <div class="table-container">
                 <table id="tableSaisies">
                     <thead><tr><th>Code</th><th>Désignation</th><th>Qté</th><th>Heure</th></tr></thead>
@@ -185,17 +483,19 @@
             </div>
         </div>
 
-        <!-- Page Base -->
+        <!-- ═══ PAGE BASE ═══ -->
         <div id="base" class="page">
             <div class="card">
-                <h3>Base Articles</h3>
+                <div class="card-title">Base Articles <span id="baseCount" class="badge">0</span></div>
                 <div class="btn-group">
                     <button class="btn btn-info" id="btnImport">📥 Importer Excel</button>
                     <button class="btn btn-success" id="btnExportBase">📤 Exporter Excel</button>
                 </div>
-                <button class="btn btn-outline" id="btnAjouterArticle">➕ Ajouter un article</button>
-                <button class="btn btn-danger" id="btnViderBase">🗑️ Vider la base</button>
-                <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
+                <div class="btn-group">
+                    <button class="btn btn-outline" id="btnAjouterArticle">➕ Ajouter un article</button>
+                    <button class="btn btn-danger" id="btnViderBase">🗑️ Vider la base</button>
+                </div>
+                <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none">
                 <div id="messageBase"></div>
                 <div id="progressContainer" style="display:none;">
                     <div class="progress-container">
@@ -204,28 +504,36 @@
                     <div class="progress-text" id="progressText">Analyse du fichier...</div>
                 </div>
             </div>
+
             <div id="importPreview" style="display:none;" class="card">
-                <h4>Aperçu de l'import</h4>
-                <p>Colonnes détectées : <span id="previewCols"></span></p>
-                <p>Nombre de lignes : <strong id="previewRowCount"></strong></p>
+                <div class="card-title">Aperçu de l'import</div>
+                <div class="alert alert-info" id="previewInfo" style="margin-bottom:12px;"></div>
                 <div class="form-group"><label>Colonne Code</label><select id="colCodeSelect"></select></div>
                 <div class="form-group"><label>Colonne Désignation</label><select id="colDesSelect"></select></div>
                 <div class="form-group"><label>Colonne Prix</label><select id="colPrixSelect"></select></div>
                 <div class="form-group"><label>Colonne Stock</label><select id="colStockSelect"></select></div>
-                <button class="btn btn-primary" id="btnConfirmImport">✅ Confirmer l'import</button>
-                <button class="btn btn-outline" id="btnCancelPreview">Annuler</button>
+                <div class="btn-group">
+                    <button class="btn btn-primary" id="btnConfirmImport">✅ Confirmer l'import</button>
+                    <button class="btn btn-outline" id="btnCancelPreview">✖ Annuler</button>
+                </div>
             </div>
+
             <div class="table-container">
                 <table id="tableBase">
-                    <thead><tr><th>Code</th><th>Désignation</th><th>Prix Achat (DH)</th><th>Stock</th><th style="width:80px;">Actions</th></tr></thead>
+                    <thead><tr><th>Code</th><th>Désignation</th><th>Prix (DH)</th><th>Stock</th><th>Actions</th></tr></thead>
                     <tbody></tbody>
                 </table>
             </div>
         </div>
 
-        <!-- Page Résultat -->
+        <!-- ═══ PAGE RÉSULTATS ═══ -->
         <div id="resultat" class="page">
-            <div class="stats" id="statsContainer"></div>
+            <div class="stats" id="statsContainer">
+                <div class="stat-card"><h3>Périmètre</h3><div class="value">-</div></div>
+                <div class="stat-card"><h3>Scannés</h3><div class="value">-</div></div>
+                <div class="stat-card"><h3>Écarts</h3><div class="value">-</div></div>
+                <div class="stat-card"><h3>Val. Écarts</h3><div class="value">-</div></div>
+            </div>
             <div class="btn-group">
                 <button class="btn btn-success" id="btnExportResExcel">📊 Excel</button>
                 <button class="btn btn-info" id="btnExportResPDF">📄 PDF</button>
@@ -239,69 +547,329 @@
                 </table>
             </div>
         </div>
-    </div>
-</div>
 
-<!-- Modale article -->
+    </div><!-- /content -->
+</div><!-- /app -->
+
+<!-- MODAL ARTICLE -->
 <div class="modal" id="articleModal">
     <div class="modal-content">
         <h3 id="modalTitle">Ajouter un article</h3>
-        <div class="form-group"><label>Code</label><input type="text" id="modalCode"></div>
-        <div class="form-group"><label>Désignation</label><input type="text" id="modalDesignation"></div>
-        <div class="form-group"><label>Prix d'achat (DH)</label><input type="number" id="modalPrix" step="0.01"></div>
-        <div class="form-group"><label>Stock physique</label><input type="number" id="modalStock" step="1"></div>
+        <div class="form-group"><label>Code</label><input type="text" id="modalCode" placeholder="Ex: 123456"></div>
+        <div class="form-group"><label>Désignation</label><input type="text" id="modalDesignation" placeholder="Nom du produit"></div>
+        <div class="form-group"><label>Prix d'achat (DH)</label><input type="number" id="modalPrix" step="0.01" placeholder="0.00"></div>
+        <div class="form-group"><label>Stock physique</label><input type="number" id="modalStock" step="1" placeholder="0"></div>
         <input type="hidden" id="modalEditIndex" value="-1">
-        <button class="btn btn-primary" id="btnSaveArticle">💾 Enregistrer</button>
-        <button class="btn btn-outline" id="btnCancelModal">Annuler</button>
+        <div class="btn-group">
+            <button class="btn btn-primary" id="btnSaveArticle">💾 Enregistrer</button>
+            <button class="btn btn-outline" id="btnCancelModal">Annuler</button>
+        </div>
     </div>
 </div>
 
-<!-- Script du Web Worker intégré en Blob -->
 <script>
-    // Création du Web Worker à partir d'un Blob
-    const workerCode = `
-        self.importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
-        
-        self.onmessage = function(e) {
-            const { arrayBuffer, type } = e.data;
-            
+// ═══════════════════════════════════════════════
+//  DONNÉES
+// ═══════════════════════════════════════════════
+let baseArticles   = JSON.parse(localStorage.getItem('baseArticles')) || [];
+let saisies        = JSON.parse(localStorage.getItem('saisies'))      || [];
+let inventaireType = localStorage.getItem('inventaireType')           || 'general';
+let pendingImportData = null;
+
+function sauvegarderBase()    { localStorage.setItem('baseArticles', JSON.stringify(baseArticles)); }
+function sauvegarderSaisies() { localStorage.setItem('saisies', JSON.stringify(saisies)); }
+function sauvegarderType()    { localStorage.setItem('inventaireType', inventaireType); }
+
+// ═══════════════════════════════════════════════
+//  NAVIGATION
+// ═══════════════════════════════════════════════
+function showPage(pageName) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+    document.getElementById(pageName).classList.add('active');
+    document.querySelector(`.nav button[data-page="${pageName}"]`).classList.add('active');
+    if (pageName === 'base')     { afficherBase(); }
+    if (pageName === 'resultat') { afficherResultats(); }
+    if (pageName === 'saisie')   { document.getElementById('codeArticle').focus(); afficherSaisies(); }
+}
+document.querySelectorAll('.nav button').forEach(btn =>
+    btn.addEventListener('click', (e) => showPage(e.target.dataset.page)));
+
+// ═══════════════════════════════════════════════
+//  TYPE INVENTAIRE
+// ═══════════════════════════════════════════════
+function setType(type) {
+    inventaireType = type;
+    sauvegarderType();
+    document.getElementById('tabGeneral').classList.toggle('active', type === 'general');
+    document.getElementById('tabTournant').classList.toggle('active', type === 'tournant');
+    if (document.getElementById('resultat').classList.contains('active')) afficherResultats();
+}
+setType(inventaireType); // init
+
+// ═══════════════════════════════════════════════
+//  SAISIE
+// ═══════════════════════════════════════════════
+function ajouterSaisie() {
+    const code     = document.getElementById('codeArticle').value.trim();
+    const comptage = parseInt(document.getElementById('comptage').value);
+    const msg      = document.getElementById('messageSaisie');
+
+    if (!code)                          return msg.innerHTML = '<div class="alert alert-error">⚠️ Code article requis</div>';
+    if (isNaN(comptage) || comptage < 0) return msg.innerHTML = '<div class="alert alert-error">⚠️ Comptage invalide</div>';
+    const article = baseArticles.find(a => a.code === code);
+    if (!article)                        return msg.innerHTML = '<div class="alert alert-error">⚠️ Article introuvable dans la base</div>';
+
+    const index    = saisies.findIndex(s => s.code === code);
+    const nouvelle = { code, designation: article.designation, comptage, date: new Date().toLocaleTimeString() };
+    if (index !== -1) saisies[index] = nouvelle;
+    else              saisies.push(nouvelle);
+
+    sauvegarderSaisies();
+    afficherSaisies();
+    msg.innerHTML = `<div class="alert alert-success">✅ <strong>${article.designation}</strong> enregistré (qté: ${comptage})</div>`;
+    document.getElementById('codeArticle').value = '';
+    document.getElementById('comptage').value    = '';
+    document.getElementById('codeArticle').focus();
+}
+
+function afficherSaisies() {
+    const tbody = document.querySelector('#tableSaisies tbody');
+    tbody.innerHTML = [...saisies].reverse().slice(0,10).map(s =>
+        `<tr><td>${s.code}</td><td>${s.designation}</td><td><strong>${s.comptage}</strong></td><td>${s.date}</td></tr>`
+    ).join('');
+    const badge = document.getElementById('saisieCount');
+    if (badge) badge.textContent = saisies.length;
+}
+
+// ═══════════════════════════════════════════════
+//  SCAN CAMÉRA
+// ═══════════════════════════════════════════════
+let html5QrCode = null, scanning = false;
+const scanBtn   = document.getElementById('scanToggle');
+const readerDiv = document.getElementById('reader');
+const scanStatus = document.getElementById('scanStatus');
+
+function isScanLibLoaded() { return typeof Html5Qrcode !== 'undefined'; }
+scanBtn.addEventListener('click', () => {
+    if (!isScanLibLoaded()) { scanStatus.innerHTML = '<span class="alert alert-error">Librairie scan non disponible</span>'; return; }
+    if (!scanning) startScan(); else stopScan();
+});
+
+async function startScan() {
+    try {
+        scanStatus.innerHTML = '<span class="alert alert-info">Demande d\'accès à la caméra...</span>';
+        if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
+        readerDiv.style.minHeight = '300px';
+        const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+        await html5QrCode.start({ facingMode: "environment" }, config,
+            (decodedText) => {
+                document.getElementById('codeArticle').value = decodedText;
+                stopScan();
+                document.getElementById('comptage').focus();
+                if (window.navigator.vibrate) window.navigator.vibrate(200);
+            }, () => {});
+        scanning = true;
+        scanBtn.classList.add('scanning'); scanBtn.innerHTML = '⏹️';
+        readerDiv.classList.add('active');
+        document.getElementById('codeArticle').disabled = true;
+        scanStatus.innerHTML = '<span class="alert alert-success">Caméra active – Visez un code-barres</span>';
+    } catch (err) {
+        let m = 'Erreur caméra: ';
+        if (err.name === 'NotAllowedError' || (err.message||'').includes('permission')) m += 'Accès refusé';
+        else if (err.name === 'NotFoundError') m += 'Aucune caméra trouvée';
+        else m += err.message || 'Inconnu';
+        scanStatus.innerHTML = `<span class="alert alert-error">${m}</span>`;
+        stopScan();
+    }
+}
+async function stopScan() {
+    if (html5QrCode && scanning) { try { await html5QrCode.stop(); } catch(e){} }
+    scanning = false;
+    scanBtn.classList.remove('scanning'); scanBtn.innerHTML = '📷';
+    readerDiv.classList.remove('active'); readerDiv.style.minHeight = '0';
+    document.getElementById('codeArticle').disabled = false;
+    document.getElementById('codeArticle').focus();
+    scanStatus.innerHTML = '';
+}
+window.addEventListener('pagehide', () => { if (scanning) stopScan(); });
+
+// ═══════════════════════════════════════════════
+//  BASE D'ARTICLES
+// ═══════════════════════════════════════════════
+const messageBase = document.getElementById('messageBase');
+
+function afficherBase() {
+    const tbody = document.querySelector('#tableBase tbody');
+    tbody.innerHTML = baseArticles.map((a, i) => `
+        <tr>
+            <td><strong>${a.code}</strong></td>
+            <td>${a.designation}</td>
+            <td>${a.prix.toFixed(2)} DH</td>
+            <td>${a.stock}</td>
+            <td>
+                <button class="icon-btn" onclick="modifierArticle(${i})">✏️</button>
+                <button class="icon-btn" onclick="supprimerArticle(${i})">🗑️</button>
+            </td>
+        </tr>`).join('');
+    const badge = document.getElementById('baseCount');
+    if (badge) badge.textContent = baseArticles.length.toLocaleString();
+}
+
+// Modale article
+const modal = document.getElementById('articleModal');
+document.getElementById('btnAjouterArticle').addEventListener('click', () => {
+    document.getElementById('modalTitle').textContent = 'Ajouter un article';
+    ['modalCode','modalDesignation','modalPrix','modalStock'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('modalEditIndex').value = '-1';
+    modal.classList.add('active');
+});
+document.getElementById('btnCancelModal').addEventListener('click', () => modal.classList.remove('active'));
+modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('active'); });
+
+document.getElementById('btnSaveArticle').addEventListener('click', () => {
+    const code        = document.getElementById('modalCode').value.trim();
+    const designation = document.getElementById('modalDesignation').value.trim();
+    const prix        = parseFloat(document.getElementById('modalPrix').value);
+    const stock       = parseInt(document.getElementById('modalStock').value);
+    const editIndex   = parseInt(document.getElementById('modalEditIndex').value);
+    if (!code || !designation) return alert('Code et désignation obligatoires');
+    if (isNaN(prix) || isNaN(stock)) return alert('Prix et stock doivent être des nombres');
+    const article = { code, designation, prix, stock };
+    if (editIndex === -1) {
+        if (baseArticles.some(a => a.code === code)) return alert('Code déjà existant');
+        baseArticles.push(article);
+    } else {
+        baseArticles[editIndex] = article;
+    }
+    sauvegarderBase(); afficherBase(); modal.classList.remove('active');
+    messageBase.innerHTML = '<div class="alert alert-success">✅ Article enregistré</div>';
+});
+
+window.modifierArticle = function(index) {
+    const a = baseArticles[index];
+    document.getElementById('modalTitle').textContent = 'Modifier l\'article';
+    document.getElementById('modalCode').value        = a.code;
+    document.getElementById('modalDesignation').value = a.designation;
+    document.getElementById('modalPrix').value        = a.prix;
+    document.getElementById('modalStock').value       = a.stock;
+    document.getElementById('modalEditIndex').value   = index;
+    modal.classList.add('active');
+};
+window.supprimerArticle = function(index) {
+    if (confirm('Supprimer cet article ?')) {
+        baseArticles.splice(index, 1);
+        sauvegarderBase(); afficherBase();
+        messageBase.innerHTML = '<div class="alert alert-success">Article supprimé</div>';
+    }
+};
+
+// ═══════════════════════════════════════════════
+//  IMPORT EXCEL — VERSION ROBUSTE (sans Worker)
+//  Fonctionne sur tous les navigateurs/contextes
+// ═══════════════════════════════════════════════
+const progressContainer = document.getElementById('progressContainer');
+const progressBar       = document.getElementById('progressBar');
+const progressText      = document.getElementById('progressText');
+const btnImport         = document.getElementById('btnImport');
+const fileInput         = document.getElementById('fileInput');
+const importPreview     = document.getElementById('importPreview');
+
+btnImport.addEventListener('click', () => { fileInput.value = ''; fileInput.click(); });
+fileInput.addEventListener('change', handleFileSelect);
+
+function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Vérification du type de fichier
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['xlsx', 'xls', 'csv'].includes(ext)) {
+        messageBase.innerHTML = '<div class="alert alert-error">⚠️ Format non supporté. Utilisez .xlsx, .xls ou .csv</div>';
+        return;
+    }
+
+    // Vérification de la disponibilité de SheetJS
+    if (typeof XLSX === 'undefined') {
+        messageBase.innerHTML = '<div class="alert alert-error">⚠️ La librairie SheetJS n\'est pas chargée. Vérifiez votre connexion internet.</div>';
+        return;
+    }
+
+    progressContainer.style.display = 'block';
+    progressBar.style.width = '10%';
+    progressText.textContent = 'Lecture du fichier...';
+    messageBase.innerHTML = '';
+    importPreview.style.display = 'none';
+    btnImport.disabled = true;
+
+    const reader = new FileReader();
+
+    reader.onerror = function() {
+        progressContainer.style.display = 'none';
+        btnImport.disabled = false;
+        messageBase.innerHTML = '<div class="alert alert-error">⚠️ Erreur lors de la lecture du fichier</div>';
+    };
+
+    reader.onload = function(e) {
+        // Utiliser setTimeout pour ne pas bloquer l'UI
+        setTimeout(() => {
             try {
-                // Message de progression
-                self.postMessage({ progress: 10, text: 'Lecture du fichier...' });
-                
-                const data = new Uint8Array(arrayBuffer);
-                const workbook = XLSX.read(data, { type: 'array' });
-                
+                progressBar.style.width = '30%';
+                progressText.textContent = 'Analyse du fichier Excel...';
+
+                let workbook;
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    workbook = XLSX.read(data, {
+                        type: 'array',
+                        cellText: false,
+                        cellDates: true
+                    });
+                } catch (readErr) {
+                    throw new Error('Fichier Excel illisible ou corrompu : ' + readErr.message);
+                }
+
                 if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
-                    self.postMessage({ error: 'Le fichier ne contient aucune feuille' });
-                    return;
+                    throw new Error('Le fichier ne contient aucune feuille de calcul');
                 }
-                
-                self.postMessage({ progress: 30, text: 'Extraction des données...' });
-                
-                const sheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[sheetName];
-                
-                // Convertir en JSON avec header:1
-                const allRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
-                
+
+                progressBar.style.width = '50%';
+                progressText.textContent = 'Extraction des données...';
+
+                const sheetName  = workbook.SheetNames[0];
+                const worksheet  = workbook.Sheets[sheetName];
+
+                // Convertir en tableau de tableaux
+                let allRows;
+                try {
+                    allRows = XLSX.utils.sheet_to_json(worksheet, {
+                        header: 1,
+                        defval: '',
+                        raw: false  // force la conversion en string pour éviter les types mixtes
+                    });
+                } catch (jsonErr) {
+                    throw new Error('Impossible d\'extraire les données : ' + jsonErr.message);
+                }
+
                 if (!allRows || allRows.length === 0) {
-                    self.postMessage({ error: 'Aucune donnée trouvée dans la feuille' });
-                    return;
+                    throw new Error('Aucune donnée trouvée dans la feuille "' + sheetName + '"');
                 }
-                
-                self.postMessage({ progress: 50, text: 'Analyse des colonnes...' });
-                
-                // Filtrer les lignes vides
-                const cleanRows = allRows.filter(row => row.some(cell => cell !== ''));
-                
-                if (cleanRows.length === 0) {
-                    self.postMessage({ error: 'Toutes les lignes sont vides' });
-                    return;
+
+                progressBar.style.width = '70%';
+                progressText.textContent = 'Analyse des colonnes...';
+
+                // Filtrer les lignes entièrement vides
+                const cleanRows = allRows.filter(row =>
+                    Array.isArray(row) && row.some(cell => cell !== '' && cell !== null && cell !== undefined)
+                );
+
+                if (cleanRows.length < 2) {
+                    throw new Error('Pas assez de données (minimum 2 lignes requises)');
                 }
-                
-                // Détecter l'en-tête
-                const keywords = ['code', 'désignation', 'designation', 'prix', 'stock', 'libellé', 'réf', 'ref'];
+
+                // Détection automatique de la ligne d'en-tête (cherche dans les 10 premières lignes)
+                const keywords = ['code', 'désignation', 'designation', 'prix', 'stock',
+                                  'libellé', 'libelle', 'réf', 'ref', 'article', 'produit'];
                 let headerIdx = 0;
                 for (let i = 0; i < Math.min(cleanRows.length, 10); i++) {
                     const rowStr = cleanRows[i].join(' ').toLowerCase();
@@ -310,519 +878,303 @@
                         break;
                     }
                 }
-                
-                const headerRow = cleanRows[headerIdx].map(h => h.toString().trim());
-                const dataRows = cleanRows.slice(headerIdx + 1).filter(row => row.some(cell => cell !== ''));
-                
-                self.postMessage({ progress: 80, text: 'Préparation des résultats...' });
-                
-                // Envoyer les résultats
-                self.postMessage({
-                    progress: 100,
-                    text: 'Terminé',
-                    done: true,
-                    headerRow: headerRow,
-                    dataRows: dataRows.slice(0, 50000), // Limiter à 50 000 lignes max
-                    totalRows: dataRows.length
-                });
-                
+
+                const headerRow = cleanRows[headerIdx].map(h => (h || '').toString().trim());
+                const dataRows  = cleanRows.slice(headerIdx + 1)
+                                           .filter(row => row.some(cell => cell !== '' && cell !== null));
+
+                if (dataRows.length === 0) {
+                    throw new Error('Aucune ligne de données trouvée après l\'en-tête');
+                }
+
+                // Limiter à 50 000 lignes
+                const limitedRows = dataRows.slice(0, 50000);
+                const totalRows   = dataRows.length;
+
+                progressBar.style.width = '100%';
+                progressText.textContent = 'Terminé !';
+
+                setTimeout(() => {
+                    progressContainer.style.display = 'none';
+                    btnImport.disabled = false;
+
+                    pendingImportData = { headerRow, dataRows: limitedRows };
+                    showImportPreview(headerRow, limitedRows.length, totalRows);
+
+                    messageBase.innerHTML = `<div class="alert alert-success">
+                        ✅ Fichier analysé avec succès —
+                        <strong>${limitedRows.length.toLocaleString()}</strong> lignes trouvées
+                        ${totalRows > 50000 ? ' (limité à 50 000 sur ' + totalRows.toLocaleString() + ')' : ''}
+                    </div>`;
+                }, 300);
+
             } catch (error) {
-                self.postMessage({ error: 'Erreur lors de l\\'analyse : ' + error.message });
+                progressContainer.style.display = 'none';
+                btnImport.disabled = false;
+                messageBase.innerHTML = `<div class="alert alert-error">⚠️ ${error.message}</div>`;
+                console.error('Erreur import Excel:', error);
             }
-        };
-    `;
-
-    const blob = new Blob([workerCode], { type: 'application/javascript' });
-    const workerUrl = URL.createObjectURL(blob);
-    const worker = new Worker(workerUrl);
-</script>
-
-<script>
-    // === DONNÉES ===
-    let baseArticles = JSON.parse(localStorage.getItem('baseArticles')) || [];
-    let saisies = JSON.parse(localStorage.getItem('saisies')) || [];
-    let inventaireType = localStorage.getItem('inventaireType') || 'general';
-    let pendingImportData = null;
-
-    function sauvegarderBase() { localStorage.setItem('baseArticles', JSON.stringify(baseArticles)); }
-    function sauvegarderSaisies() { localStorage.setItem('saisies', JSON.stringify(saisies)); }
-    function sauvegarderInventaireType() { localStorage.setItem('inventaireType', inventaireType); }
-
-    // === NAVIGATION ===
-    function showPage(pageName) {
-        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-        document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
-        document.getElementById(pageName).classList.add('active');
-        document.querySelector(`.nav button[data-page="${pageName}"]`).classList.add('active');
-        if (pageName === 'base') afficherBase();
-        if (pageName === 'resultat') afficherResultats();
-        if (pageName === 'saisie') {
-            document.getElementById('codeArticle').focus();
-            afficherSaisies();
-        }
-    }
-    document.querySelectorAll('.nav button').forEach(btn => btn.addEventListener('click', (e) => showPage(e.target.dataset.page)));
-
-    const selectType = document.getElementById('inventaireType');
-    selectType.value = inventaireType;
-    selectType.addEventListener('change', () => {
-        inventaireType = selectType.value;
-        sauvegarderInventaireType();
-        if (document.getElementById('resultat').classList.contains('active')) {
-            afficherResultats();
-        }
-    });
-
-    // === SAISIE ===
-    function ajouterSaisie() {
-        const code = document.getElementById('codeArticle').value.trim();
-        const comptage = parseInt(document.getElementById('comptage').value);
-        const msg = document.getElementById('messageSaisie');
-        if (!code) return msg.innerHTML = '<div class="alert alert-error">Code article requis</div>';
-        if (isNaN(comptage) || comptage < 0) return msg.innerHTML = '<div class="alert alert-error">Comptage invalide</div>';
-        const article = baseArticles.find(a => a.code === code);
-        if (!article) return msg.innerHTML = '<div class="alert alert-error">Article introuvable dans la base</div>';
-        const index = saisies.findIndex(s => s.code === code);
-        const nouvelle = { code, designation: article.designation, comptage, date: new Date().toLocaleTimeString() };
-        if (index !== -1) saisies[index] = nouvelle;
-        else saisies.push(nouvelle);
-        sauvegarderSaisies();
-        afficherSaisies();
-        msg.innerHTML = '<div class="alert alert-success">✅ Saisie enregistrée</div>';
-        document.getElementById('codeArticle').value = '';
-        document.getElementById('comptage').value = '';
-        document.getElementById('codeArticle').focus();
-    }
-    function afficherSaisies() {
-        const tbody = document.querySelector('#tableSaisies tbody');
-        tbody.innerHTML = '';
-        [...saisies].reverse().slice(0,10).forEach(s => {
-            tbody.innerHTML += `<tr><td>${s.code}</td><td>${s.designation}</td><td>${s.comptage}</td><td>${s.date}</td></tr>`;
-        });
-    }
-
-    // === SCAN CAMÉRA ===
-    let html5QrCode = null;
-    let scanning = false;
-    const scanBtn = document.getElementById('scanToggle');
-    const readerDiv = document.getElementById('reader');
-    const scanStatus = document.getElementById('scanStatus');
-
-    function isScanLibLoaded() { return typeof Html5Qrcode !== 'undefined'; }
-    scanBtn.addEventListener('click', () => {
-        if (!isScanLibLoaded()) {
-            scanStatus.innerHTML = '<span class="alert alert-error">Librairie de scan non chargée.</span>';
-            return;
-        }
-        if (!scanning) startScan(); else stopScan();
-    });
-
-    async function startScan() {
-        try {
-            scanStatus.innerHTML = '<span class="alert alert-info">Demande d\'accès à la caméra...</span>';
-            if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
-            readerDiv.style.minHeight = '300px';
-            const config = { fps: 10, qrbox: { width: 250, height: 150 } };
-            await html5QrCode.start(
-                { facingMode: "environment" }, config,
-                (decodedText) => {
-                    document.getElementById('codeArticle').value = decodedText;
-                    stopScan();
-                    document.getElementById('comptage').focus();
-                    if (window.navigator.vibrate) window.navigator.vibrate(200);
-                },
-                (error) => {}
-            );
-            scanning = true;
-            scanBtn.classList.add('scanning');
-            scanBtn.innerHTML = '⏹️';
-            readerDiv.classList.add('active');
-            document.getElementById('codeArticle').disabled = true;
-            scanStatus.innerHTML = '<span class="alert alert-success">Caméra active. Visez un code-barres.</span>';
-        } catch (err) {
-            console.error(err);
-            let msg = 'Erreur caméra : ';
-            if (err.name === 'NotAllowedError' || err.message.includes('permission')) msg += 'Accès refusé.';
-            else if (err.name === 'NotFoundError') msg += 'Aucune caméra.';
-            else msg += err.message || 'Erreur';
-            scanStatus.innerHTML = `<span class="alert alert-error">${msg}</span>`;
-            stopScan();
-        }
-    }
-
-    async function stopScan() {
-        if (html5QrCode && scanning) {
-            try { await html5QrCode.stop(); } catch (err) {}
-        }
-        scanning = false;
-        scanBtn.classList.remove('scanning');
-        scanBtn.innerHTML = '📷';
-        readerDiv.classList.remove('active');
-        readerDiv.style.minHeight = '0';
-        document.getElementById('codeArticle').disabled = false;
-        document.getElementById('codeArticle').focus();
-        scanStatus.innerHTML = '';
-    }
-
-    window.addEventListener('pagehide', () => { if (scanning) stopScan(); });
-    window.addEventListener('beforeunload', () => { if (scanning) stopScan(); });
-
-    // === BASE DE DONNÉES ===
-    const messageBase = document.getElementById('messageBase');
-    function afficherBase() {
-        const tbody = document.querySelector('#tableBase tbody');
-        tbody.innerHTML = baseArticles.map((a, index) => `
-            <tr>
-                <td>${a.code}</td><td>${a.designation}</td>
-                <td>${a.prix.toFixed(2)} DH</td><td>${a.stock}</td>
-                <td>
-                    <button class="icon-btn" onclick="modifierArticle(${index})">✏️</button>
-                    <button class="icon-btn" onclick="supprimerArticle(${index})">🗑️</button>
-                </td>
-            </tr>
-        `).join('');
-    }
-
-    // Modale article
-    const modal = document.getElementById('articleModal');
-    document.getElementById('btnAjouterArticle').addEventListener('click', () => {
-        document.getElementById('modalTitle').textContent = 'Ajouter un article';
-        document.getElementById('modalCode').value = '';
-        document.getElementById('modalDesignation').value = '';
-        document.getElementById('modalPrix').value = '';
-        document.getElementById('modalStock').value = '';
-        document.getElementById('modalEditIndex').value = '-1';
-        modal.classList.add('active');
-    });
-    document.getElementById('btnCancelModal').addEventListener('click', () => modal.classList.remove('active'));
-    document.getElementById('btnSaveArticle').addEventListener('click', () => {
-        const code = document.getElementById('modalCode').value.trim();
-        const designation = document.getElementById('modalDesignation').value.trim();
-        const prix = parseFloat(document.getElementById('modalPrix').value);
-        const stock = parseInt(document.getElementById('modalStock').value);
-        const editIndex = parseInt(document.getElementById('modalEditIndex').value);
-        if (!code || !designation) return alert('Code et désignation obligatoires');
-        if (isNaN(prix) || isNaN(stock)) return alert('Prix et stock doivent être des nombres');
-        const article = { code, designation, prix, stock };
-        if (editIndex === -1) {
-            if (baseArticles.some(a => a.code === code)) return alert('Code déjà existant');
-            baseArticles.push(article);
-        } else {
-            baseArticles[editIndex] = article;
-        }
-        sauvegarderBase();
-        afficherBase();
-        modal.classList.remove('active');
-        messageBase.innerHTML = '<div class="alert alert-success">✅ Article enregistré</div>';
-    });
-    window.modifierArticle = function(index) {
-        const a = baseArticles[index];
-        document.getElementById('modalTitle').textContent = 'Modifier l\'article';
-        document.getElementById('modalCode').value = a.code;
-        document.getElementById('modalDesignation').value = a.designation;
-        document.getElementById('modalPrix').value = a.prix;
-        document.getElementById('modalStock').value = a.stock;
-        document.getElementById('modalEditIndex').value = index;
-        modal.classList.add('active');
+        }, 50); // petit délai pour laisser l'UI se mettre à jour
     };
-    window.supprimerArticle = function(index) {
-        if (confirm('Supprimer cet article ?')) {
-            baseArticles.splice(index,1);
+
+    reader.readAsArrayBuffer(file);
+}
+
+function showImportPreview(headers, displayedRows, totalRows) {
+    document.getElementById('previewInfo').innerHTML =
+        `<strong>${displayedRows.toLocaleString()}</strong> ligne(s) prêtes à être importées` +
+        (totalRows > 50000 ? ` <em>(sur ${totalRows.toLocaleString()} au total)</em>` : '');
+
+    const selects = ['colCodeSelect', 'colDesSelect', 'colPrixSelect', 'colStockSelect'];
+    selects.forEach(id => {
+        const sel = document.getElementById(id);
+        sel.innerHTML = '<option value="">-- Sélectionner --</option>';
+        headers.forEach((h, i) => {
+            sel.innerHTML += `<option value="${i}">${h || '(colonne ' + (i+1) + ')'}</option>`;
+        });
+    });
+
+    // Auto-sélection intelligente
+    const kwMap = [
+        ['colCodeSelect',  ['code', 'ref', 'ean', 'barcode', 'article']],
+        ['colDesSelect',   ['désignation', 'designation', 'libellé', 'libelle', 'nom', 'produit']],
+        ['colPrixSelect',  ['prix', 'achat', 'pa', 'tarif', 'cost']],
+        ['colStockSelect', ['stock', 'physique', 'quantité', 'quantite', 'qty', 'qte']]
+    ];
+    kwMap.forEach(([id, kws]) => {
+        const found = headers.findIndex(h =>
+            kws.some(k => h.toLowerCase().includes(k))
+        );
+        if (found !== -1) document.getElementById(id).value = found;
+    });
+
+    importPreview.style.display = 'block';
+}
+
+document.getElementById('btnConfirmImport').addEventListener('click', () => {
+    if (!pendingImportData) return;
+    const idxCode  = document.getElementById('colCodeSelect').value;
+    const idxDes   = document.getElementById('colDesSelect').value;
+    const idxPrix  = document.getElementById('colPrixSelect').value;
+    const idxStock = document.getElementById('colStockSelect').value;
+
+    if (idxCode === '' || idxDes === '') {
+        messageBase.innerHTML = '<div class="alert alert-warning">⚠️ Veuillez sélectionner au moins les colonnes Code et Désignation</div>';
+        return;
+    }
+
+    messageBase.innerHTML = '<div class="alert alert-info"><span class="spinner"></span> Import en cours...</div>';
+    btnImport.disabled = true;
+    importPreview.style.display = 'none';
+
+    // Traitement en setTimeout pour ne pas geler l'interface
+    setTimeout(() => {
+        try {
+            const imported = pendingImportData.dataRows
+                .map(row => {
+                    const code        = (row[idxCode] || '').toString().trim();
+                    const designation = (row[idxDes]  || '').toString().trim();
+                    if (!code || !designation) return null;
+
+                    let prix = 0;
+                    if (idxPrix !== '') {
+                        const raw = (row[idxPrix] || '0').toString().replace(',', '.').replace(/[^\d.-]/g, '');
+                        prix = parseFloat(raw) || 0;
+                    }
+
+                    let stock = 0;
+                    if (idxStock !== '') {
+                        const raw = (row[idxStock] || '0').toString().replace(',', '.').replace(/[^\d.-]/g, '');
+                        stock = parseInt(raw) || 0;
+                    }
+
+                    return { code, designation, prix, stock };
+                })
+                .filter(a => a !== null);
+
+            if (imported.length === 0) {
+                throw new Error('Aucun article valide trouvé (vérifiez les colonnes sélectionnées)');
+            }
+
+            baseArticles = imported;
             sauvegarderBase();
             afficherBase();
-            messageBase.innerHTML = '<div class="alert alert-success">Article supprimé</div>';
+
+            // Mettre à jour les désignations dans les saisies existantes
+            saisies.forEach(s => {
+                const art = baseArticles.find(a => a.code === s.code);
+                if (art) s.designation = art.designation;
+            });
+            sauvegarderSaisies();
+
+            messageBase.innerHTML = `<div class="alert alert-success">
+                ✅ <strong>${imported.length.toLocaleString()}</strong> articles importés avec succès !
+            </div>`;
+        } catch (error) {
+            messageBase.innerHTML = `<div class="alert alert-error">⚠️ Erreur import : ${error.message}</div>`;
+            console.error('Erreur confirm import:', error);
+        } finally {
+            btnImport.disabled  = false;
+            pendingImportData   = null;
         }
-    };
+    }, 100);
+});
 
-    // === IMPORT AVEC WEB WORKER ===
-    const progressContainer = document.getElementById('progressContainer');
-    const progressBar = document.getElementById('progressBar');
-    const progressText = document.getElementById('progressText');
-    const btnImport = document.getElementById('btnImport');
-    const fileInput = document.getElementById('fileInput');
-    const importPreview = document.getElementById('importPreview');
+document.getElementById('btnCancelPreview').addEventListener('click', () => {
+    importPreview.style.display = 'none';
+    pendingImportData = null;
+    messageBase.innerHTML = '';
+});
 
-    btnImport.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', handleFileSelect);
+document.getElementById('btnExportBase').addEventListener('click', () => {
+    if (!baseArticles.length) return alert('Base vide');
+    const data = [['Code', 'Désignation', 'Prix achat (DH)', 'Stock physique'],
+        ...baseArticles.map(a => [a.code, a.designation, a.prix, a.stock])];
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Base');
+    XLSX.writeFile(wb, 'base_articles_dream_market.xlsx');
+});
 
-    function handleFileSelect(event) {
-        const file = event.target.files[0];
-        if (!file) return;
+document.getElementById('btnViderBase').addEventListener('click', () => {
+    if (confirm('Vider toute la base et les saisies ?')) {
+        baseArticles = []; saisies = [];
+        sauvegarderBase(); sauvegarderSaisies();
+        afficherBase(); afficherSaisies();
+        messageBase.innerHTML = '<div class="alert alert-success">Base et saisies effacées</div>';
+    }
+});
 
-        // Afficher la barre de progression
-        progressContainer.style.display = 'block';
-        progressBar.style.width = '0%';
-        progressText.textContent = 'Démarrage de l\'analyse...';
-        messageBase.innerHTML = '';
-        btnImport.disabled = true;
+// ═══════════════════════════════════════════════
+//  RÉSULTATS
+// ═══════════════════════════════════════════════
+function getFilteredArticles() {
+    if (inventaireType === 'tournant') {
+        const codesScannes = saisies.map(s => s.code);
+        return baseArticles.filter(a => codesScannes.includes(a.code));
+    }
+    return baseArticles;
+}
 
-        // Lire le fichier en ArrayBuffer
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const arrayBuffer = e.target.result;
-            
-            // Envoyer au Web Worker
-            worker.postMessage({ arrayBuffer, type: 'parse' });
-        };
-        reader.readAsArrayBuffer(file);
+function afficherResultats() {
+    const articles = getFilteredArticles();
+    const tbody    = document.querySelector('#tableResultat tbody');
+    let nbScannes = 0, nbEcarts = 0, valeurTotale = 0;
+
+    const articlesToShow = articles.length > 1000 ? articles.slice(0, 1000) : articles;
+
+    tbody.innerHTML = articlesToShow.map(article => {
+        const saisie  = saisies.find(s => s.code === article.code);
+        const comptage = saisie ? saisie.comptage : 0;
+        const ecart    = comptage - article.stock;
+        const valEcart = ecart * article.prix;
+        if (saisie) nbScannes++;
+        if (ecart !== 0) { nbEcarts++; valeurTotale += Math.abs(valEcart); }
+        const couleur = ecart < 0 ? 'color:#dc2626;font-weight:800;' : (ecart > 0 ? 'color:#059669;font-weight:800;' : '');
+        return `<tr>
+            <td><strong>${article.code}</strong></td>
+            <td>${article.designation}</td>
+            <td>${article.prix.toFixed(2)}</td>
+            <td>${article.stock}</td>
+            <td>${saisie ? `<strong>${comptage}</strong>` : '<span style="color:#9ca3af">-</span>'}</td>
+            <td style="${couleur}">${ecart !== 0 ? (ecart>0?'+':'')+ecart : '–'}</td>
+            <td style="${couleur}">${valEcart !== 0 ? (valEcart>0?'+':'')+valEcart.toFixed(2)+' DH' : '–'}</td>
+        </tr>`;
+    }).join('');
+
+    if (articles.length > 1000) {
+        tbody.innerHTML += `<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--text-muted);font-style:italic;">
+            Affichage limité à 1 000 / ${articles.length.toLocaleString()} articles — exportez en Excel pour tout voir
+        </td></tr>`;
     }
 
-    // Réception des messages du Web Worker
-    worker.onmessage = function(e) {
-        const msg = e.data;
+    document.getElementById('statsContainer').innerHTML = `
+        <div class="stat-card"><h3>Périmètre</h3><div class="value">${articles.length.toLocaleString()}</div></div>
+        <div class="stat-card"><h3>Scannés</h3><div class="value">${nbScannes.toLocaleString()}</div></div>
+        <div class="stat-card"><h3>Écarts</h3><div class="value">${nbEcarts.toLocaleString()}</div></div>
+        <div class="stat-card"><h3>Val. Écarts</h3><div class="value">${valeurTotale.toFixed(0)} DH</div></div>
+    `;
+}
 
-        if (msg.error) {
-            // Erreur
-            progressContainer.style.display = 'none';
-            messageBase.innerHTML = `<div class="alert alert-error">${msg.error}</div>`;
-            btnImport.disabled = false;
-            return;
-        }
+document.getElementById('btnActualiser').addEventListener('click', () => {
+    afficherResultats();
+    document.getElementById('messageResultat').innerHTML = '<div class="alert alert-success">✅ Données actualisées</div>';
+});
 
-        if (msg.progress) {
-            // Mise à jour de la progression
-            progressBar.style.width = msg.progress + '%';
-            progressText.textContent = msg.text;
-        }
-
-        if (msg.done) {
-            // Analyse terminée
-            progressContainer.style.display = 'none';
-            btnImport.disabled = false;
-
-            pendingImportData = {
-                headerRow: msg.headerRow,
-                dataRows: msg.dataRows
-            };
-
-            // Afficher l'aperçu
-            showImportPreview(msg.headerRow, msg.dataRows.length, msg.totalRows);
-            messageBase.innerHTML = `<div class="alert alert-success">✅ Fichier analysé : ${msg.dataRows.length.toLocaleString()} lignes de données trouvées</div>`;
-        }
-    };
-
-    function showImportPreview(headers, displayedRows, totalRows) {
-        document.getElementById('previewCols').textContent = headers.join(', ');
-        document.getElementById('previewRowCount').textContent = 
-            `${displayedRows.toLocaleString()} ligne(s) chargée(s)` + 
-            (totalRows > 50000 ? ` (limité à 50 000 sur ${totalRows.toLocaleString()} totales)` : '');
-
-        const selects = ['colCodeSelect', 'colDesSelect', 'colPrixSelect', 'colStockSelect'];
-        selects.forEach(id => {
-            const sel = document.getElementById(id);
-            sel.innerHTML = '<option value="">-- Sélectionner --</option>';
-            headers.forEach((h, i) => sel.innerHTML += `<option value="${i}">${h || '(vide)'}</option>`);
-        });
-
-        // Auto-sélection
-        ['colCodeSelect', 'colDesSelect', 'colPrixSelect', 'colStockSelect'].forEach((id, idx) => {
-            const kw = [['code', 'ref'], ['désignation', 'designation', 'libellé'], ['prix', 'achat'], ['stock', 'physique']][idx];
-            const found = headers.findIndex(h => kw.some(k => h.toLowerCase().includes(k)));
-            if (found !== -1) document.getElementById(id).value = found;
-        });
-
-        importPreview.style.display = 'block';
-    }
-
-    document.getElementById('btnConfirmImport').addEventListener('click', () => {
-        if (!pendingImportData) return;
-        const idxCode = document.getElementById('colCodeSelect').value;
-        const idxDes = document.getElementById('colDesSelect').value;
-        const idxPrix = document.getElementById('colPrixSelect').value;
-        const idxStock = document.getElementById('colStockSelect').value;
-        
-        if (!idxCode && !idxDes) {
-            alert('Veuillez sélectionner au moins les colonnes Code et Désignation');
-            return;
-        }
-
-        // Traitement par lots pour ne pas bloquer
-        messageBase.innerHTML = '<div class="alert alert-info"><span class="spinner"></span> Import en cours...</div>';
-        btnImport.disabled = true;
-        importPreview.style.display = 'none';
-
-        setTimeout(() => {
-            try {
-                baseArticles = pendingImportData.dataRows.map(row => ({
-                    code: (idxCode !== '' ? row[idxCode] : '').toString().trim(),
-                    designation: (idxDes !== '' ? row[idxDes] : '').toString().trim(),
-                    prix: parseFloat((idxPrix !== '' ? row[idxPrix] : '0').toString().replace(',', '.')) || 0,
-                    stock: parseInt(idxStock !== '' ? row[idxStock] : 0) || 0
-                })).filter(a => a.code && a.designation);
-
-                sauvegarderBase();
-                afficherBase();
-                
-                // Mettre à jour les désignations dans les saisies
-                saisies.forEach(s => {
-                    const art = baseArticles.find(a => a.code === s.code);
-                    if (art) s.designation = art.designation;
-                });
-                sauvegarderSaisies();
-
-                messageBase.innerHTML = `<div class="alert alert-success">✅ ${baseArticles.length.toLocaleString()} articles importés avec succès !</div>`;
-                btnImport.disabled = false;
-                pendingImportData = null;
-            } catch (error) {
-                messageBase.innerHTML = `<div class="alert alert-error">Erreur lors de l'import : ${error.message}</div>`;
-                btnImport.disabled = false;
-            }
-        }, 100);
-    });
-
-    document.getElementById('btnCancelPreview').addEventListener('click', () => {
-        importPreview.style.display = 'none';
-        pendingImportData = null;
-        messageBase.innerHTML = '';
-    });
-
-    document.getElementById('btnExportBase').addEventListener('click', () => {
-        if (!baseArticles.length) return alert('Base vide');
-        const data = [['Code', 'Désignation', 'Prix achat (DH)', 'Stock physique'],
-            ...baseArticles.map(a => [a.code, a.designation, a.prix, a.stock])];
-        const ws = XLSX.utils.aoa_to_sheet(data);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Base");
-        XLSX.writeFile(wb, "base_articles.xlsx");
-    });
-
-    document.getElementById('btnViderBase').addEventListener('click', () => {
-        if (confirm('Vider la base et les saisies ?')) {
-            baseArticles = []; saisies = [];
-            sauvegarderBase(); sauvegarderSaisies();
-            afficherBase(); afficherSaisies();
-            messageBase.innerHTML = '<div class="alert alert-success">Base vidée</div>';
-        }
-    });
-
-    // === RÉSULTATS ===
-    function getFilteredArticles() {
-        if (inventaireType === 'tournant') {
-            const codesScannes = saisies.map(s => s.code);
-            return baseArticles.filter(a => codesScannes.includes(a.code));
-        }
-        return baseArticles;
-    }
-
-    function afficherResultats() {
-        const articles = getFilteredArticles();
-        const tbody = document.querySelector('#tableResultat tbody');
-        let nbScannes = 0, nbEcarts = 0, valeurTotale = 0;
-        
-        // Limiter l'affichage à 1000 lignes pour la performance
-        const articlesToShow = articles.length > 1000 ? articles.slice(0, 1000) : articles;
-        
-        tbody.innerHTML = articlesToShow.map(article => {
-            const saisie = saisies.find(s => s.code === article.code);
-            const comptage = saisie ? saisie.comptage : 0;
-            const ecart = comptage - article.stock;
-            const valEcart = ecart * article.prix;
-            if (saisie) nbScannes++;
-            if (ecart !== 0) { nbEcarts++; valeurTotale += Math.abs(valEcart); }
-            const couleur = ecart < 0 ? 'color:#dc2626' : (ecart > 0 ? 'color:#059669' : '');
-            return `<tr>
-                <td>${article.code}</td><td>${article.designation}</td>
-                <td>${article.prix.toFixed(2)} DH</td><td>${article.stock}</td>
-                <td>${saisie ? comptage : '-'}</td>
-                <td style="font-weight:bold;${couleur}">${ecart !== 0 ? (ecart>0?'+':'')+ecart : '0'}</td>
-                <td style="font-weight:bold;${couleur}">${valEcart !== 0 ? (valEcart>0?'+':'')+valEcart.toFixed(2)+' DH' : '0 DH'}</td>
-            </tr>`;
-        }).join('');
-
-        if (articles.length > 1000) {
-            tbody.innerHTML += `<tr><td colspan="7" style="text-align:center; padding:20px; color:#6b7280;">
-                Affichage limité à 1 000 lignes sur ${articles.length.toLocaleString()}. Exportez en Excel pour voir toutes les lignes.
-            </td></tr>`;
-        }
-
-        document.getElementById('statsContainer').innerHTML = `
-            <div class="stat-card"><h3>Articles (périmètre)</h3><div class="value">${articles.length.toLocaleString()}</div></div>
-            <div class="stat-card"><h3>Articles scannés</h3><div class="value">${nbScannes.toLocaleString()}</div></div>
-            <div class="stat-card"><h3>Écarts</h3><div class="value">${nbEcarts.toLocaleString()}</div></div>
-            <div class="stat-card"><h3>Val. écarts</h3><div class="value">${valeurTotale.toFixed(2)} DH</div></div>
-        `;
-    }
-
-    document.getElementById('btnActualiser').addEventListener('click', () => {
-        afficherResultats();
-        document.getElementById('messageResultat').innerHTML = '<div class="alert alert-success">✅ Actualisé</div>';
-    });
-
-    document.getElementById('btnExportResExcel').addEventListener('click', () => {
-        const articles = getFilteredArticles();
-        const data = [['Code', 'Désignation', 'Prix Achat (DH)', 'Stock Physique', 'Comptage', 'Écart Qté', 'Valeur Écart (DH)'],
-            ...articles.map(a => {
-                const s = saisies.find(x => x.code === a.code);
-                const c = s ? s.comptage : 0;
-                const e = c - a.stock;
-                return [a.code, a.designation, a.prix, a.stock, c, e, (e*a.prix).toFixed(2)];
-            })];
-        const ws = XLSX.utils.aoa_to_sheet(data);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Résultats");
-        XLSX.writeFile(wb, `inventaire_${inventaireType}.xlsx`);
-    });
-
-    document.getElementById('btnExportResPDF').addEventListener('click', () => {
-        const articles = getFilteredArticles();
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF();
-        const typeLabel = inventaireType === 'general' ? 'Général' : 'Tournant';
-        doc.setFontSize(16);
-        doc.text(`Résultats Inventaire ${typeLabel} - Dream Market`, 14, 20);
-        doc.setFontSize(10);
-        doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, 28);
-        let nbScannes = 0, nbEcarts = 0, valEcarts = 0;
-        articles.forEach(a => {
+document.getElementById('btnExportResExcel').addEventListener('click', () => {
+    const articles = getFilteredArticles();
+    const data = [['Code', 'Désignation', 'Prix Achat (DH)', 'Stock Physique', 'Comptage', 'Écart Qté', 'Valeur Écart (DH)'],
+        ...articles.map(a => {
             const s = saisies.find(x => x.code === a.code);
-            if (s) nbScannes++;
             const c = s ? s.comptage : 0;
             const e = c - a.stock;
-            if (e !== 0) { nbEcarts++; valEcarts += Math.abs(e * a.prix); }
-        });
-        doc.text(`Articles: ${articles.length} | Scannés: ${nbScannes} | Écarts: ${nbEcarts} | Valeur écarts: ${valEcarts.toFixed(2)} DH`, 14, 36);
-        
-        // Limiter à 5000 lignes dans le PDF
-        const articlesForPdf = articles.length > 5000 ? articles.slice(0, 5000) : articles;
-        
-        doc.autoTable({
-            head: [['Code', 'Désignation', 'Prix (DH)', 'Stock', 'Comptage', 'Écart', 'Val. Écart (DH)']],
-            body: articlesForPdf.map(a => {
-                const s = saisies.find(x => x.code === a.code);
-                const c = s ? s.comptage : 0;
-                const e = c - a.stock;
-                return [a.code, a.designation, `${a.prix.toFixed(2)} DH`, a.stock, c, e, `${(e*a.prix).toFixed(2)} DH`];
-            }),
-            startY: 42,
-            styles: { fontSize: 7 },
-            headStyles: { fillColor: [79, 70, 229] }
-        });
-        doc.save(`resultats_inventaire_${inventaireType}.pdf`);
-    });
+            return [a.code, a.designation, a.prix, a.stock, c, e, (e * a.prix).toFixed(2)];
+        })];
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Résultats');
+    XLSX.writeFile(wb, `inventaire_${inventaireType}_dream_market.xlsx`);
+});
 
-    // Événements touches
-    document.getElementById('codeArticle').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); document.getElementById('comptage').focus(); }
-    });
-    document.getElementById('comptage').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); ajouterSaisie(); }
-    });
-    document.getElementById('btnValider').addEventListener('click', ajouterSaisie);
-    document.getElementById('btnReset').addEventListener('click', () => {
-        document.getElementById('codeArticle').value = '';
-        document.getElementById('comptage').value = '';
-        document.getElementById('codeArticle').focus();
-    });
+document.getElementById('btnExportResPDF').addEventListener('click', () => {
+    const articles = getFilteredArticles();
+    const { jsPDF } = window.jspdf;
+    const doc       = new jsPDF();
+    const typeLabel = inventaireType === 'general' ? 'Général' : 'Tournant';
+    doc.setFontSize(16); doc.setTextColor(232, 24, 28);
+    doc.text(`Inventaire ${typeLabel} — Dream Market`, 14, 20);
+    doc.setFontSize(9); doc.setTextColor(100);
+    doc.text(`Date: ${new Date().toLocaleDateString('fr-FR')} | Articles: ${articles.length}`, 14, 28);
 
-    // Nettoyer le Worker
-    window.addEventListener('beforeunload', () => {
-        worker.terminate();
-        URL.revokeObjectURL(workerUrl);
+    let nbScannes = 0, nbEcarts = 0, valEcarts = 0;
+    articles.forEach(a => {
+        const s = saisies.find(x => x.code === a.code);
+        if (s) nbScannes++;
+        const c = s ? s.comptage : 0;
+        const e = c - a.stock;
+        if (e !== 0) { nbEcarts++; valEcarts += Math.abs(e * a.prix); }
     });
+    doc.text(`Scannés: ${nbScannes} | Écarts: ${nbEcarts} | Valeur écarts: ${valEcarts.toFixed(2)} DH`, 14, 34);
 
-    // Initialisation
-    afficherBase();
-    afficherSaisies();
+    const articlesForPdf = articles.slice(0, 5000);
+    doc.autoTable({
+        head: [['Code', 'Désignation', 'Prix (DH)', 'Stock', 'Comptage', 'Écart', 'Val. Écart (DH)']],
+        body: articlesForPdf.map(a => {
+            const s = saisies.find(x => x.code === a.code);
+            const c = s ? s.comptage : 0;
+            const e = c - a.stock;
+            return [a.code, a.designation, a.prix.toFixed(2), a.stock, c, e, (e*a.prix).toFixed(2)];
+        }),
+        startY: 40,
+        styles: { fontSize: 7, font: 'helvetica' },
+        headStyles: { fillColor: [232, 24, 28], textColor: 255, fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [255, 248, 248] }
+    });
+    doc.save(`inventaire_${inventaireType}_dream_market.pdf`);
+});
+
+// ═══════════════════════════════════════════════
+//  RACCOURCIS CLAVIER
+// ═══════════════════════════════════════════════
+document.getElementById('codeArticle').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('comptage').focus(); }
+});
+document.getElementById('comptage').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); ajouterSaisie(); }
+});
+document.getElementById('btnValider').addEventListener('click', ajouterSaisie);
+document.getElementById('btnReset').addEventListener('click', () => {
+    document.getElementById('codeArticle').value = '';
+    document.getElementById('comptage').value    = '';
+    document.getElementById('messageSaisie').innerHTML = '';
+    document.getElementById('codeArticle').focus();
+});
+
+// ═══════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════
+afficherBase();
+afficherSaisies();
 </script>
 </body>
 </html>
