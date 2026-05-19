@@ -69,6 +69,7 @@
         .btn-info { background:#3b82f6; color:white; }
         .btn-danger { background:#ef4444; color:white; }
         .btn-outline { background:white; border:2px solid #4f46e5; color:#4f46e5; }
+        .btn:disabled { opacity:0.5; pointer-events:none; }
         .btn-group { display:flex; flex-wrap:wrap; gap:10px; margin:16px 0; }
         .btn-group .btn { flex:1; min-width:120px; }
         .alert { padding:12px 16px; border-radius:12px; margin:12px 0; font-size:0.9em; font-weight:500; }
@@ -96,6 +97,29 @@
             background-image:url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
             background-repeat:no-repeat; background-position:right 12px center; background-size:20px;
         }
+        
+        /* Barre de progression */
+        .progress-container {
+            width: 100%;
+            background: #e5e7eb;
+            border-radius: 12px;
+            overflow: hidden;
+            margin: 12px 0;
+            height: 8px;
+        }
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #4f46e5, #7c3aed);
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 12px;
+        }
+        .progress-text {
+            text-align: center;
+            font-size: 0.85em;
+            color: #6b7280;
+            margin-top: 4px;
+        }
         .spinner {
             display: inline-block;
             width: 20px;
@@ -104,10 +128,9 @@
             border-radius: 50%;
             border-top-color: #fff;
             animation: spin 1s ease-in-out infinite;
-            vertical-align: middle;
-            margin-right: 8px;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+        
         @media (min-width:768px) {
             .app { max-width:768px; margin:20px auto; border-radius:24px; min-height:auto; box-shadow:0 25px 50px rgba(0,0,0,0.15); }
             .btn { width:auto; }
@@ -126,6 +149,7 @@
         <button data-page="resultat">📊 Résultats</button>
     </div>
     <div class="content">
+        <!-- Page Saisie -->
         <div id="saisie" class="page active">
             <div class="card">
                 <div class="form-group">
@@ -160,6 +184,8 @@
                 </table>
             </div>
         </div>
+
+        <!-- Page Base -->
         <div id="base" class="page">
             <div class="card">
                 <h3>Base Articles</h3>
@@ -171,10 +197,17 @@
                 <button class="btn btn-danger" id="btnViderBase">🗑️ Vider la base</button>
                 <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
                 <div id="messageBase"></div>
+                <div id="progressContainer" style="display:none;">
+                    <div class="progress-container">
+                        <div class="progress-bar" id="progressBar"></div>
+                    </div>
+                    <div class="progress-text" id="progressText">Analyse du fichier...</div>
+                </div>
             </div>
             <div id="importPreview" style="display:none;" class="card">
                 <h4>Aperçu de l'import</h4>
                 <p>Colonnes détectées : <span id="previewCols"></span></p>
+                <p>Nombre de lignes : <strong id="previewRowCount"></strong></p>
                 <div class="form-group"><label>Colonne Code</label><select id="colCodeSelect"></select></div>
                 <div class="form-group"><label>Colonne Désignation</label><select id="colDesSelect"></select></div>
                 <div class="form-group"><label>Colonne Prix</label><select id="colPrixSelect"></select></div>
@@ -189,6 +222,8 @@
                 </table>
             </div>
         </div>
+
+        <!-- Page Résultat -->
         <div id="resultat" class="page">
             <div class="stats" id="statsContainer"></div>
             <div class="btn-group">
@@ -207,6 +242,7 @@
     </div>
 </div>
 
+<!-- Modale article -->
 <div class="modal" id="articleModal">
     <div class="modal-content">
         <h3 id="modalTitle">Ajouter un article</h3>
@@ -220,11 +256,93 @@
     </div>
 </div>
 
+<!-- Script du Web Worker intégré en Blob -->
+<script>
+    // Création du Web Worker à partir d'un Blob
+    const workerCode = `
+        self.importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+        
+        self.onmessage = function(e) {
+            const { arrayBuffer, type } = e.data;
+            
+            try {
+                // Message de progression
+                self.postMessage({ progress: 10, text: 'Lecture du fichier...' });
+                
+                const data = new Uint8Array(arrayBuffer);
+                const workbook = XLSX.read(data, { type: 'array' });
+                
+                if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+                    self.postMessage({ error: 'Le fichier ne contient aucune feuille' });
+                    return;
+                }
+                
+                self.postMessage({ progress: 30, text: 'Extraction des données...' });
+                
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                
+                // Convertir en JSON avec header:1
+                const allRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+                
+                if (!allRows || allRows.length === 0) {
+                    self.postMessage({ error: 'Aucune donnée trouvée dans la feuille' });
+                    return;
+                }
+                
+                self.postMessage({ progress: 50, text: 'Analyse des colonnes...' });
+                
+                // Filtrer les lignes vides
+                const cleanRows = allRows.filter(row => row.some(cell => cell !== ''));
+                
+                if (cleanRows.length === 0) {
+                    self.postMessage({ error: 'Toutes les lignes sont vides' });
+                    return;
+                }
+                
+                // Détecter l'en-tête
+                const keywords = ['code', 'désignation', 'designation', 'prix', 'stock', 'libellé', 'réf', 'ref'];
+                let headerIdx = 0;
+                for (let i = 0; i < Math.min(cleanRows.length, 10); i++) {
+                    const rowStr = cleanRows[i].join(' ').toLowerCase();
+                    if (keywords.some(kw => rowStr.includes(kw))) {
+                        headerIdx = i;
+                        break;
+                    }
+                }
+                
+                const headerRow = cleanRows[headerIdx].map(h => h.toString().trim());
+                const dataRows = cleanRows.slice(headerIdx + 1).filter(row => row.some(cell => cell !== ''));
+                
+                self.postMessage({ progress: 80, text: 'Préparation des résultats...' });
+                
+                // Envoyer les résultats
+                self.postMessage({
+                    progress: 100,
+                    text: 'Terminé',
+                    done: true,
+                    headerRow: headerRow,
+                    dataRows: dataRows.slice(0, 50000), // Limiter à 50 000 lignes max
+                    totalRows: dataRows.length
+                });
+                
+            } catch (error) {
+                self.postMessage({ error: 'Erreur lors de l\\'analyse : ' + error.message });
+            }
+        };
+    `;
+
+    const blob = new Blob([workerCode], { type: 'application/javascript' });
+    const workerUrl = URL.createObjectURL(blob);
+    const worker = new Worker(workerUrl);
+</script>
+
 <script>
     // === DONNÉES ===
     let baseArticles = JSON.parse(localStorage.getItem('baseArticles')) || [];
     let saisies = JSON.parse(localStorage.getItem('saisies')) || [];
     let inventaireType = localStorage.getItem('inventaireType') || 'general';
+    let pendingImportData = null;
 
     function sauvegarderBase() { localStorage.setItem('baseArticles', JSON.stringify(baseArticles)); }
     function sauvegarderSaisies() { localStorage.setItem('saisies', JSON.stringify(saisies)); }
@@ -416,120 +534,96 @@
         }
     };
 
-    // === IMPORT EXCEL CORRIGÉ CONTRE LES BLOCAGES ===
-    let pendingImportData = null;
-    document.getElementById('btnImport').addEventListener('click', () => document.getElementById('fileInput').click());
-    document.getElementById('fileInput').addEventListener('change', handleFileSelect);
+    // === IMPORT AVEC WEB WORKER ===
+    const progressContainer = document.getElementById('progressContainer');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    const btnImport = document.getElementById('btnImport');
+    const fileInput = document.getElementById('fileInput');
+    const importPreview = document.getElementById('importPreview');
+
+    btnImport.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', handleFileSelect);
 
     function handleFileSelect(event) {
         const file = event.target.files[0];
         if (!file) return;
 
-        // Étape 1 : Modification immédiate de l'interface pour afficher le spinner
-        messageBase.innerHTML = '<div class="alert alert-info"><span class="spinner"></span> Lecture du fichier Excel...</div>';
-        document.getElementById('btnImport').disabled = true;
+        // Afficher la barre de progression
+        progressContainer.style.display = 'block';
+        progressBar.style.width = '0%';
+        progressText.textContent = 'Démarrage de l\'analyse...';
+        messageBase.innerHTML = '';
+        btnImport.disabled = true;
 
-        // Étape 2 : Petit délai de 150ms pour laisser le navigateur dessiner l'interface graphique
-        setTimeout(() => {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                setTimeout(() => {
-                    try {
-                        const data = e.target.result;
-                        // Lecture au format binaire : beaucoup plus économe en RAM sur smartphone
-                        const wb = XLSX.read(data, {type: 'binary', cellDates: false, cellStyles: false});
-                        
-                        if (!wb.SheetNames.length) throw new Error("Le fichier ne contient aucune feuille");
-                        
-                        const ws = wb.Sheets[wb.SheetNames[0]];
-                        // Extraction brute rapide sans traitement lourd
-                        const allRows = XLSX.utils.sheet_to_json(ws, {header: 1, defval: '', raw: true});
-                        
-                        // Nettoyage asynchrone des lignes vides par paquets de 400 lignes
-                        let cleanRows = [];
-                        let i = 0;
-                        
-                        function processCleanRows() {
-                            let end = Math.min(i + 400, allRows.length);
-                            for (; i < end; i++) {
-                                if (allRows[i] && allRows[i].some(cell => cell !== '')) {
-                                    cleanRows.push(allRows[i]);
-                                }
-                            }
-                            
-                            if (i < allRows.length) {
-                                // S'il reste des lignes, on fait une micro-pause asynchrone de 10ms
-                                setTimeout(processCleanRows, 10);
-                            } else {
-                                // Analyse finale
-                                finishExcelParsing(cleanRows);
-                            }
-                        }
-                        processCleanRows();
+        // Lire le fichier en ArrayBuffer
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const arrayBuffer = e.target.result;
+            
+            // Envoyer au Web Worker
+            worker.postMessage({ arrayBuffer, type: 'parse' });
+        };
+        reader.readAsArrayBuffer(file);
+    }
 
-                    } catch (error) {
-                        messageBase.innerHTML = `<div class="alert alert-error">Erreur de lecture : ${error.message}</div>`;
-                        document.getElementById('btnImport').disabled = false;
-                    }
-                }, 50);
+    // Réception des messages du Web Worker
+    worker.onmessage = function(e) {
+        const msg = e.data;
+
+        if (msg.error) {
+            // Erreur
+            progressContainer.style.display = 'none';
+            messageBase.innerHTML = `<div class="alert alert-error">${msg.error}</div>`;
+            btnImport.disabled = false;
+            return;
+        }
+
+        if (msg.progress) {
+            // Mise à jour de la progression
+            progressBar.style.width = msg.progress + '%';
+            progressText.textContent = msg.text;
+        }
+
+        if (msg.done) {
+            // Analyse terminée
+            progressContainer.style.display = 'none';
+            btnImport.disabled = false;
+
+            pendingImportData = {
+                headerRow: msg.headerRow,
+                dataRows: msg.dataRows
             };
-            reader.readAsBinaryString(file);
-        }, 150);
-    }
 
-    function finishExcelParsing(cleanRows) {
-        if (!cleanRows.length) {
-            messageBase.innerHTML = '<div class="alert alert-error">Aucune donnée trouvée</div>';
-            document.getElementById('btnImport').disabled = false;
-            return;
+            // Afficher l'aperçu
+            showImportPreview(msg.headerRow, msg.dataRows.length, msg.totalRows);
+            messageBase.innerHTML = `<div class="alert alert-success">✅ Fichier analysé : ${msg.dataRows.length.toLocaleString()} lignes de données trouvées</div>`;
         }
+    };
 
-        // Détection de l'en-tête
-        const keywords = ['code','désignation','designation','prix','stock','libellé','réf','ref'];
-        let headerIdx = 0;
-        for (let i = 0; i < cleanRows.length; i++) {
-            if (keywords.some(kw => cleanRows[i].join(' ').toLowerCase().includes(kw))) { 
-                headerIdx = i; 
-                break; 
-            }
-        }
-        
-        const headerRow = cleanRows[headerIdx].map(h => (h !== undefined && h !== null) ? h.toString().trim() : '');
-        const dataRows = cleanRows.slice(headerIdx + 1);
-        
-        if (!dataRows.length) {
-            messageBase.innerHTML = '<div class="alert alert-error">Aucune donnée après la ligne des titres</div>';
-            document.getElementById('btnImport').disabled = false;
-            return;
-        }
+    function showImportPreview(headers, displayedRows, totalRows) {
+        document.getElementById('previewCols').textContent = headers.join(', ');
+        document.getElementById('previewRowCount').textContent = 
+            `${displayedRows.toLocaleString()} ligne(s) chargée(s)` + 
+            (totalRows > 50000 ? ` (limité à 50 000 sur ${totalRows.toLocaleString()} totales)` : '');
 
-        pendingImportData = { headerRow, dataRows };
-        showImportPreview(headerRow);
-        messageBase.innerHTML = ''; 
-        document.getElementById('btnImport').disabled = false;
-    }
-
-    function showImportPreview(headers) {
-        document.getElementById('previewCols').textContent = headers.filter(h => h).join(', ');
-        const selects = ['colCodeSelect','colDesSelect','colPrixSelect','colStockSelect'];
+        const selects = ['colCodeSelect', 'colDesSelect', 'colPrixSelect', 'colStockSelect'];
         selects.forEach(id => {
             const sel = document.getElementById(id);
             sel.innerHTML = '<option value="">-- Sélectionner --</option>';
-            headers.forEach((h,i) => {
-                if(h || i === 0) sel.innerHTML += `<option value="${i}">${h || 'Colonne ' + (i+1)}</option>`;
-            });
+            headers.forEach((h, i) => sel.innerHTML += `<option value="${i}">${h || '(vide)'}</option>`);
         });
-        
-        // Auto-détection intelligente des colonnes
-        ['colCodeSelect','colDesSelect','colPrixSelect','colStockSelect'].forEach((id, idx) => {
-            const kw = [['code','ref','ean','gtin'], ['désignation','designation','libellé','libelle','nom','produit'], ['prix','achat','pa'], ['stock','physique','qté','quantité']][idx];
+
+        // Auto-sélection
+        ['colCodeSelect', 'colDesSelect', 'colPrixSelect', 'colStockSelect'].forEach((id, idx) => {
+            const kw = [['code', 'ref'], ['désignation', 'designation', 'libellé'], ['prix', 'achat'], ['stock', 'physique']][idx];
             const found = headers.findIndex(h => kw.some(k => h.toLowerCase().includes(k)));
             if (found !== -1) document.getElementById(id).value = found;
         });
-        document.getElementById('importPreview').style.display = 'block';
+
+        importPreview.style.display = 'block';
     }
 
-    // Confirmation de l'import asynchrone par paquets (Chunking)
     document.getElementById('btnConfirmImport').addEventListener('click', () => {
         if (!pendingImportData) return;
         const idxCode = document.getElementById('colCodeSelect').value;
@@ -537,69 +631,55 @@
         const idxPrix = document.getElementById('colPrixSelect').value;
         const idxStock = document.getElementById('colStockSelect').value;
         
-        if (idxCode === '' || idxDes === '') return alert('Sélectionnez obligatoirement au moins le Code et la Désignation');
+        if (!idxCode && !idxDes) {
+            alert('Veuillez sélectionner au moins les colonnes Code et Désignation');
+            return;
+        }
 
-        messageBase.innerHTML = '<div class="alert alert-info"><span class="spinner"></span> Traitement et enregistrement... <span id="importProgress">0%</span></div>';
-        
-        let localArticles = [];
-        let rows = pendingImportData.dataRows;
-        let index = 0;
-        
-        function importerParPaquet() {
-            let limit = Math.min(index + 300, rows.length); // Paquets de 300 lignes
-            
-            for (; index < limit; index++) {
-                let row = rows[index];
-                if (!row) continue;
-                
-                let code = (idxCode !== '' && row[idxCode] !== undefined) ? row[idxCode].toString().trim() : '';
-                let designation = (idxDes !== '' && row[idxDes] !== undefined) ? row[idxDes].toString().trim() : '';
-                
-                if (code && designation) {
-                    let prixRaw = idxPrix !== '' && row[idxPrix] !== undefined ? row[idxPrix] : '0';
-                    let stockRaw = idxStock !== '' && row[idxStock] !== undefined ? row[idxStock] : '0';
-                    
-                    let prix = parseFloat(prixRaw.toString().replace(',','.')) || 0;
-                    let stock = parseInt(stockRaw) || 0;
-                    
-                    localArticles.push({ code, designation, prix, stock });
-                }
-            }
-            
-            // Mise à jour de la progression
-            document.getElementById('importProgress').textContent = Math.round((index / rows.length) * 100) + '%';
-            
-            if (index < rows.length) {
-                setTimeout(importerParPaquet, 15); // Laisse l'UI respirer
-            } else {
-                // Importation terminée
-                baseArticles = localArticles;
+        // Traitement par lots pour ne pas bloquer
+        messageBase.innerHTML = '<div class="alert alert-info"><span class="spinner"></span> Import en cours...</div>';
+        btnImport.disabled = true;
+        importPreview.style.display = 'none';
+
+        setTimeout(() => {
+            try {
+                baseArticles = pendingImportData.dataRows.map(row => ({
+                    code: (idxCode !== '' ? row[idxCode] : '').toString().trim(),
+                    designation: (idxDes !== '' ? row[idxDes] : '').toString().trim(),
+                    prix: parseFloat((idxPrix !== '' ? row[idxPrix] : '0').toString().replace(',', '.')) || 0,
+                    stock: parseInt(idxStock !== '' ? row[idxStock] : 0) || 0
+                })).filter(a => a.code && a.designation);
+
                 sauvegarderBase();
                 afficherBase();
                 
-                document.getElementById('importPreview').style.display = 'none';
-                pendingImportData = null;
-                messageBase.innerHTML = `<div class="alert alert-success">✅ ${baseArticles.length} articles importés avec succès !</div>`;
-                
+                // Mettre à jour les désignations dans les saisies
                 saisies.forEach(s => {
                     const art = baseArticles.find(a => a.code === s.code);
                     if (art) s.designation = art.designation;
                 });
                 sauvegarderSaisies();
+
+                messageBase.innerHTML = `<div class="alert alert-success">✅ ${baseArticles.length.toLocaleString()} articles importés avec succès !</div>`;
+                btnImport.disabled = false;
+                pendingImportData = null;
+            } catch (error) {
+                messageBase.innerHTML = `<div class="alert alert-error">Erreur lors de l'import : ${error.message}</div>`;
+                btnImport.disabled = false;
             }
-        }
-        
-        setTimeout(importerParPaquet, 50);
+        }, 100);
     });
 
     document.getElementById('btnCancelPreview').addEventListener('click', () => {
-        document.getElementById('importPreview').style.display = 'none';
+        importPreview.style.display = 'none';
         pendingImportData = null;
+        messageBase.innerHTML = '';
     });
 
     document.getElementById('btnExportBase').addEventListener('click', () => {
         if (!baseArticles.length) return alert('Base vide');
-        const data = [['Code','Désignation','Prix achat (DH)','Stock physique'], ...baseArticles.map(a => [a.code, a.designation, a.prix, a.stock])];
+        const data = [['Code', 'Désignation', 'Prix achat (DH)', 'Stock physique'],
+            ...baseArticles.map(a => [a.code, a.designation, a.prix, a.stock])];
         const ws = XLSX.utils.aoa_to_sheet(data);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Base");
@@ -628,7 +708,11 @@
         const articles = getFilteredArticles();
         const tbody = document.querySelector('#tableResultat tbody');
         let nbScannes = 0, nbEcarts = 0, valeurTotale = 0;
-        tbody.innerHTML = articles.map(article => {
+        
+        // Limiter l'affichage à 1000 lignes pour la performance
+        const articlesToShow = articles.length > 1000 ? articles.slice(0, 1000) : articles;
+        
+        tbody.innerHTML = articlesToShow.map(article => {
             const saisie = saisies.find(s => s.code === article.code);
             const comptage = saisie ? saisie.comptage : 0;
             const ecart = comptage - article.stock;
@@ -645,10 +729,16 @@
             </tr>`;
         }).join('');
 
+        if (articles.length > 1000) {
+            tbody.innerHTML += `<tr><td colspan="7" style="text-align:center; padding:20px; color:#6b7280;">
+                Affichage limité à 1 000 lignes sur ${articles.length.toLocaleString()}. Exportez en Excel pour voir toutes les lignes.
+            </td></tr>`;
+        }
+
         document.getElementById('statsContainer').innerHTML = `
-            <div class="stat-card"><h3>Articles (périmètre)</h3><div class="value">${articles.length}</div></div>
-            <div class="stat-card"><h3>Articles scannés</h3><div class="value">${nbScannes}</div></div>
-            <div class="stat-card"><h3>Écarts</h3><div class="value">${nbEcarts}</div></div>
+            <div class="stat-card"><h3>Articles (périmètre)</h3><div class="value">${articles.length.toLocaleString()}</div></div>
+            <div class="stat-card"><h3>Articles scannés</h3><div class="value">${nbScannes.toLocaleString()}</div></div>
+            <div class="stat-card"><h3>Écarts</h3><div class="value">${nbEcarts.toLocaleString()}</div></div>
             <div class="stat-card"><h3>Val. écarts</h3><div class="value">${valeurTotale.toFixed(2)} DH</div></div>
         `;
     }
@@ -660,7 +750,7 @@
 
     document.getElementById('btnExportResExcel').addEventListener('click', () => {
         const articles = getFilteredArticles();
-        const data = [['Code','Désignation','Prix Achat (DH)','Stock Physique','Comptage','Écart Qté','Valeur Écart (DH)'],
+        const data = [['Code', 'Désignation', 'Prix Achat (DH)', 'Stock Physique', 'Comptage', 'Écart Qté', 'Valeur Écart (DH)'],
             ...articles.map(a => {
                 const s = saisies.find(x => x.code === a.code);
                 const c = s ? s.comptage : 0;
@@ -691,9 +781,13 @@
             if (e !== 0) { nbEcarts++; valEcarts += Math.abs(e * a.prix); }
         });
         doc.text(`Articles: ${articles.length} | Scannés: ${nbScannes} | Écarts: ${nbEcarts} | Valeur écarts: ${valEcarts.toFixed(2)} DH`, 14, 36);
+        
+        // Limiter à 5000 lignes dans le PDF
+        const articlesForPdf = articles.length > 5000 ? articles.slice(0, 5000) : articles;
+        
         doc.autoTable({
-            head: [['Code','Désignation','Prix (DH)','Stock','Comptage','Écart','Val. Écart (DH)']],
-            body: articles.map(a => {
+            head: [['Code', 'Désignation', 'Prix (DH)', 'Stock', 'Comptage', 'Écart', 'Val. Écart (DH)']],
+            body: articlesForPdf.map(a => {
                 const s = saisies.find(x => x.code === a.code);
                 const c = s ? s.comptage : 0;
                 const e = c - a.stock;
@@ -701,7 +795,7 @@
             }),
             startY: 42,
             styles: { fontSize: 7 },
-            headStyles: { fillColor: [79,70,229] }
+            headStyles: { fillColor: [79, 70, 229] }
         });
         doc.save(`resultats_inventaire_${inventaireType}.pdf`);
     });
@@ -718,6 +812,12 @@
         document.getElementById('codeArticle').value = '';
         document.getElementById('comptage').value = '';
         document.getElementById('codeArticle').focus();
+    });
+
+    // Nettoyer le Worker
+    window.addEventListener('beforeunload', () => {
+        worker.terminate();
+        URL.revokeObjectURL(workerUrl);
     });
 
     // Initialisation
