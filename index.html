@@ -699,9 +699,12 @@ window.addEventListener('pagehide', () => { if (scanning) stopScan(); });
 // ═══════════════════════════════════════════════
 const messageBase = document.getElementById('messageBase');
 
+const BASE_DISPLAY_LIMIT = 300; // max lignes affichées dans le DOM
+
 function afficherBase() {
     const tbody = document.querySelector('#tableBase tbody');
-    tbody.innerHTML = baseArticles.map((a, i) => `
+    const shown = baseArticles.slice(0, BASE_DISPLAY_LIMIT);
+    tbody.innerHTML = shown.map((a, i) => `
         <tr>
             <td><strong>${a.code}</strong></td>
             <td>${a.designation}</td>
@@ -712,6 +715,14 @@ function afficherBase() {
                 <button class="icon-btn" onclick="supprimerArticle(${i})">🗑️</button>
             </td>
         </tr>`).join('');
+
+    if (baseArticles.length > BASE_DISPLAY_LIMIT) {
+        tbody.innerHTML += `<tr><td colspan="5" style="text-align:center;padding:14px;color:var(--text-muted);font-style:italic;font-size:0.85em;">
+            Affichage limité à ${BASE_DISPLAY_LIMIT} / <strong>${baseArticles.length.toLocaleString()}</strong> articles
+            — utilisez l'export Excel pour voir tout
+        </td></tr>`;
+    }
+
     const badge = document.getElementById('baseCount');
     if (badge) badge.textContent = baseArticles.length.toLocaleString();
 }
@@ -765,8 +776,14 @@ window.supprimerArticle = function(index) {
 };
 
 // ═══════════════════════════════════════════════
-//  IMPORT EXCEL — VERSION ROBUSTE (sans Worker)
-//  Fonctionne sur tous les navigateurs/contextes
+//  IMPORT EXCEL — GRAND VOLUME SANS BLOCAGE
+//  Stratégie :
+//  1. Parsing XLSX dans un Web Worker (thread séparé)
+//     → le Worker charge SheetJS via fetch() dans son scope
+//  2. Fallback automatique si Worker impossible
+//     → parsing découpé en micro-tâches (chunks)
+//  3. Confirm import par batches + requestAnimationFrame
+//     → jamais de gel de l'interface
 // ═══════════════════════════════════════════════
 const progressContainer = document.getElementById('progressContainer');
 const progressBar       = document.getElementById('progressBar');
@@ -775,149 +792,217 @@ const btnImport         = document.getElementById('btnImport');
 const fileInput         = document.getElementById('fileInput');
 const importPreview     = document.getElementById('importPreview');
 
+// URL publique de SheetJS (même version que celle du <head>)
+const XLSX_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+
+// ── Création du Worker via Blob (pas de importScripts) ──
+// Le Worker charge XLSX par fetch puis traite le fichier
+const WORKER_SRC = `
+self.onmessage = async function(e) {
+    const { arrayBuffer } = e.data;
+    try {
+        // Étape 1 : charger SheetJS dans le Worker
+        self.postMessage({ progress: 5, text: 'Chargement de SheetJS...' });
+        if (typeof XLSX === 'undefined') {
+            const resp = await fetch('${XLSX_CDN}');
+            if (!resp.ok) throw new Error('Impossible de charger SheetJS (' + resp.status + ')');
+            const src = await resp.text();
+            // eslint-disable-next-line no-eval
+            eval(src);
+        }
+
+        // Étape 2 : lire le workbook
+        self.postMessage({ progress: 20, text: 'Lecture du fichier Excel...' });
+        const data = new Uint8Array(arrayBuffer);
+        let workbook;
+        try {
+            workbook = XLSX.read(data, { type: 'array', raw: true, cellDates: false });
+        } catch (err) {
+            throw new Error('Fichier illisible ou corrompu : ' + err.message);
+        }
+        if (!workbook.SheetNames || workbook.SheetNames.length === 0)
+            throw new Error('Aucune feuille trouvée dans le fichier');
+
+        // Étape 3 : convertir la 1ère feuille
+        self.postMessage({ progress: 40, text: 'Extraction des données...' });
+        const ws = workbook.Sheets[workbook.SheetNames[0]];
+        let allRows;
+        try {
+            allRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+        } catch (err) {
+            throw new Error('Extraction impossible : ' + err.message);
+        }
+        if (!allRows || allRows.length === 0)
+            throw new Error('La feuille est vide');
+
+        // Étape 4 : nettoyer et détecter l'en-tête
+        self.postMessage({ progress: 65, text: 'Analyse des colonnes...' });
+        const cleanRows = allRows.filter(r => Array.isArray(r) && r.some(c => c !== '' && c != null));
+        if (cleanRows.length < 2) throw new Error('Données insuffisantes (< 2 lignes non vides)');
+
+        const keywords = ['code','désignation','designation','prix','stock',
+                          'libellé','libelle','réf','ref','article','produit','ean'];
+        let headerIdx = 0;
+        for (let i = 0; i < Math.min(cleanRows.length, 15); i++) {
+            if (keywords.some(kw => cleanRows[i].join(' ').toLowerCase().includes(kw))) {
+                headerIdx = i; break;
+            }
+        }
+
+        const headerRow = cleanRows[headerIdx].map(h => (h || '').toString().trim());
+        const dataRows  = cleanRows.slice(headerIdx + 1).filter(r => r.some(c => c !== '' && c != null));
+        if (dataRows.length === 0) throw new Error('Aucune ligne de données après l\'en-tête');
+
+        const LIMITED   = dataRows.slice(0, 100000);
+        const totalRows = dataRows.length;
+
+        self.postMessage({ progress: 100, text: 'Analyse terminée', done: true,
+            headerRow, dataRows: LIMITED, totalRows });
+
+    } catch (err) {
+        self.postMessage({ error: err.message || String(err) });
+    }
+};
+`;
+
+// Tente de créer un Worker ; retourne null si l'environnement l'interdit
+function createWorker() {
+    try {
+        const blob = new Blob([WORKER_SRC], { type: 'application/javascript' });
+        const url  = URL.createObjectURL(blob);
+        const w    = new Worker(url);
+        w._url = url;
+        return w;
+    } catch (e) {
+        console.warn('Web Worker non disponible, fallback activé :', e.message);
+        return null;
+    }
+}
+
+// ── Fallback : parsing dans le thread principal par micro-tâches ──
+async function parseExcelMainThread(arrayBuffer, onProgress) {
+    return new Promise((resolve, reject) => {
+        onProgress(10, 'Lecture du fichier Excel...');
+        setTimeout(() => {
+            try {
+                const data = new Uint8Array(arrayBuffer);
+                let workbook;
+                try {
+                    workbook = XLSX.read(data, { type: 'array', raw: true, cellDates: false });
+                } catch (err) { throw new Error('Fichier illisible : ' + err.message); }
+                if (!workbook.SheetNames || !workbook.SheetNames.length)
+                    throw new Error('Aucune feuille trouvée');
+
+                onProgress(40, 'Extraction des données...');
+                setTimeout(() => {
+                    try {
+                        const ws = workbook.Sheets[workbook.SheetNames[0]];
+                        const allRows = XLSX.utils.sheet_to_json(ws, { header:1, defval:'', raw:false });
+                        if (!allRows || !allRows.length) throw new Error('Feuille vide');
+
+                        onProgress(70, 'Analyse des colonnes...');
+                        setTimeout(() => {
+                            try {
+                                const cleanRows = allRows.filter(r => Array.isArray(r) && r.some(c => c !== '' && c != null));
+                                if (cleanRows.length < 2) throw new Error('Données insuffisantes');
+
+                                const keywords = ['code','désignation','designation','prix','stock',
+                                                  'libellé','libelle','réf','ref','article','produit'];
+                                let headerIdx = 0;
+                                for (let i = 0; i < Math.min(cleanRows.length, 15); i++) {
+                                    if (keywords.some(kw => cleanRows[i].join(' ').toLowerCase().includes(kw)))
+                                        { headerIdx = i; break; }
+                                }
+                                const headerRow = cleanRows[headerIdx].map(h => (h||'').toString().trim());
+                                const dataRows  = cleanRows.slice(headerIdx+1).filter(r => r.some(c => c !== '' && c != null));
+                                if (!dataRows.length) throw new Error('Aucune donnée après l\'en-tête');
+                                resolve({ headerRow, dataRows: dataRows.slice(0, 100000), totalRows: dataRows.length });
+                            } catch(err) { reject(err); }
+                        }, 30);
+                    } catch(err) { reject(err); }
+                }, 30);
+            } catch(err) { reject(err); }
+        }, 30);
+    });
+}
+
+// ── Handler principal ──
 btnImport.addEventListener('click', () => { fileInput.value = ''; fileInput.click(); });
 fileInput.addEventListener('change', handleFileSelect);
 
 function handleFileSelect(event) {
     const file = event.target.files[0];
     if (!file) return;
-
-    // Vérification du type de fichier
     const ext = file.name.split('.').pop().toLowerCase();
     if (!['xlsx', 'xls', 'csv'].includes(ext)) {
-        messageBase.innerHTML = '<div class="alert alert-error">⚠️ Format non supporté. Utilisez .xlsx, .xls ou .csv</div>';
+        messageBase.innerHTML = '<div class="alert alert-error">⚠️ Format non supporté (.xlsx, .xls, .csv uniquement)</div>';
         return;
     }
-
-    // Vérification de la disponibilité de SheetJS
     if (typeof XLSX === 'undefined') {
-        messageBase.innerHTML = '<div class="alert alert-error">⚠️ La librairie SheetJS n\'est pas chargée. Vérifiez votre connexion internet.</div>';
+        messageBase.innerHTML = '<div class="alert alert-error">⚠️ SheetJS non chargé — vérifiez votre connexion internet</div>';
         return;
     }
 
-    progressContainer.style.display = 'block';
-    progressBar.style.width = '10%';
-    progressText.textContent = 'Lecture du fichier...';
+    setProgress(5, 'Lecture du fichier...');
     messageBase.innerHTML = '';
     importPreview.style.display = 'none';
     btnImport.disabled = true;
 
-    const reader = new FileReader();
+    const fr = new FileReader();
+    fr.onerror = () => importError('Impossible de lire le fichier');
+    fr.onload  = (e) => {
+        const arrayBuffer = e.target.result;
+        const worker = createWorker();
 
-    reader.onerror = function() {
-        progressContainer.style.display = 'none';
-        btnImport.disabled = false;
-        messageBase.innerHTML = '<div class="alert alert-error">⚠️ Erreur lors de la lecture du fichier</div>';
+        if (worker) {
+            // ── Chemin Worker ──
+            worker.onmessage = (ev) => {
+                const msg = ev.data;
+                if (msg.error)    { importError(msg.error); worker.terminate(); URL.revokeObjectURL(worker._url); return; }
+                if (msg.progress) setProgress(msg.progress, msg.text);
+                if (msg.done) {
+                    worker.terminate();
+                    URL.revokeObjectURL(worker._url);
+                    onParseSuccess(msg.headerRow, msg.dataRows, msg.totalRows);
+                }
+            };
+            worker.onerror = (ev) => {
+                importError('Erreur Worker : ' + (ev.message || 'inconnue'));
+                try { worker.terminate(); URL.revokeObjectURL(worker._url); } catch(_) {}
+            };
+            // Transfert du buffer (zero-copy)
+            worker.postMessage({ arrayBuffer }, [arrayBuffer]);
+        } else {
+            // ── Chemin Fallback ──
+            parseExcelMainThread(arrayBuffer, setProgress)
+                .then(({ headerRow, dataRows, totalRows }) => onParseSuccess(headerRow, dataRows, totalRows))
+                .catch(err => importError(err.message || String(err)));
+        }
     };
+    fr.readAsArrayBuffer(file);
+}
 
-    reader.onload = function(e) {
-        // Utiliser setTimeout pour ne pas bloquer l'UI
-        setTimeout(() => {
-            try {
-                progressBar.style.width = '30%';
-                progressText.textContent = 'Analyse du fichier Excel...';
+function setProgress(pct, label) {
+    progressContainer.style.display = 'block';
+    progressBar.style.width = pct + '%';
+    progressText.textContent = label;
+}
 
-                let workbook;
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    workbook = XLSX.read(data, {
-                        type: 'array',
-                        cellText: false,
-                        cellDates: true
-                    });
-                } catch (readErr) {
-                    throw new Error('Fichier Excel illisible ou corrompu : ' + readErr.message);
-                }
+function importError(msg) {
+    progressContainer.style.display = 'none';
+    btnImport.disabled = false;
+    messageBase.innerHTML = `<div class="alert alert-error">⚠️ ${msg}</div>`;
+}
 
-                if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
-                    throw new Error('Le fichier ne contient aucune feuille de calcul');
-                }
-
-                progressBar.style.width = '50%';
-                progressText.textContent = 'Extraction des données...';
-
-                const sheetName  = workbook.SheetNames[0];
-                const worksheet  = workbook.Sheets[sheetName];
-
-                // Convertir en tableau de tableaux
-                let allRows;
-                try {
-                    allRows = XLSX.utils.sheet_to_json(worksheet, {
-                        header: 1,
-                        defval: '',
-                        raw: false  // force la conversion en string pour éviter les types mixtes
-                    });
-                } catch (jsonErr) {
-                    throw new Error('Impossible d\'extraire les données : ' + jsonErr.message);
-                }
-
-                if (!allRows || allRows.length === 0) {
-                    throw new Error('Aucune donnée trouvée dans la feuille "' + sheetName + '"');
-                }
-
-                progressBar.style.width = '70%';
-                progressText.textContent = 'Analyse des colonnes...';
-
-                // Filtrer les lignes entièrement vides
-                const cleanRows = allRows.filter(row =>
-                    Array.isArray(row) && row.some(cell => cell !== '' && cell !== null && cell !== undefined)
-                );
-
-                if (cleanRows.length < 2) {
-                    throw new Error('Pas assez de données (minimum 2 lignes requises)');
-                }
-
-                // Détection automatique de la ligne d'en-tête (cherche dans les 10 premières lignes)
-                const keywords = ['code', 'désignation', 'designation', 'prix', 'stock',
-                                  'libellé', 'libelle', 'réf', 'ref', 'article', 'produit'];
-                let headerIdx = 0;
-                for (let i = 0; i < Math.min(cleanRows.length, 10); i++) {
-                    const rowStr = cleanRows[i].join(' ').toLowerCase();
-                    if (keywords.some(kw => rowStr.includes(kw))) {
-                        headerIdx = i;
-                        break;
-                    }
-                }
-
-                const headerRow = cleanRows[headerIdx].map(h => (h || '').toString().trim());
-                const dataRows  = cleanRows.slice(headerIdx + 1)
-                                           .filter(row => row.some(cell => cell !== '' && cell !== null));
-
-                if (dataRows.length === 0) {
-                    throw new Error('Aucune ligne de données trouvée après l\'en-tête');
-                }
-
-                // Limiter à 50 000 lignes
-                const limitedRows = dataRows.slice(0, 50000);
-                const totalRows   = dataRows.length;
-
-                progressBar.style.width = '100%';
-                progressText.textContent = 'Terminé !';
-
-                setTimeout(() => {
-                    progressContainer.style.display = 'none';
-                    btnImport.disabled = false;
-
-                    pendingImportData = { headerRow, dataRows: limitedRows };
-                    showImportPreview(headerRow, limitedRows.length, totalRows);
-
-                    messageBase.innerHTML = `<div class="alert alert-success">
-                        ✅ Fichier analysé avec succès —
-                        <strong>${limitedRows.length.toLocaleString()}</strong> lignes trouvées
-                        ${totalRows > 50000 ? ' (limité à 50 000 sur ' + totalRows.toLocaleString() + ')' : ''}
-                    </div>`;
-                }, 300);
-
-            } catch (error) {
-                progressContainer.style.display = 'none';
-                btnImport.disabled = false;
-                messageBase.innerHTML = `<div class="alert alert-error">⚠️ ${error.message}</div>`;
-                console.error('Erreur import Excel:', error);
-            }
-        }, 50); // petit délai pour laisser l'UI se mettre à jour
-    };
-
-    reader.readAsArrayBuffer(file);
+function onParseSuccess(headerRow, dataRows, totalRows) {
+    progressContainer.style.display = 'none';
+    btnImport.disabled = false;
+    pendingImportData  = { headerRow, dataRows };
+    showImportPreview(headerRow, dataRows.length, totalRows);
+    messageBase.innerHTML = `<div class="alert alert-success">
+        ✅ Fichier analysé — <strong>${dataRows.length.toLocaleString()}</strong> lignes
+        ${totalRows > 100000 ? ' <em>(limité à 100 000 sur ' + totalRows.toLocaleString() + ')</em>' : ''}
+    </div>`;
 }
 
 function showImportPreview(headers, displayedRows, totalRows) {
@@ -959,66 +1044,92 @@ document.getElementById('btnConfirmImport').addEventListener('click', () => {
     const idxStock = document.getElementById('colStockSelect').value;
 
     if (idxCode === '' || idxDes === '') {
-        messageBase.innerHTML = '<div class="alert alert-warning">⚠️ Veuillez sélectionner au moins les colonnes Code et Désignation</div>';
+        messageBase.innerHTML = '<div class="alert alert-warning">⚠️ Veuillez sélectionner au moins Code et Désignation</div>';
         return;
     }
 
-    messageBase.innerHTML = '<div class="alert alert-info"><span class="spinner"></span> Import en cours...</div>';
-    btnImport.disabled = true;
     importPreview.style.display = 'none';
+    btnImport.disabled = true;
+    setProgress(0, 'Préparation...');
 
-    // Traitement en setTimeout pour ne pas geler l'interface
+    const allRows  = pendingImportData.dataRows;
+    const total    = allRows.length;
+    const CHUNK    = 3000;   // lignes traitées par frame
+    let offset     = 0;
+    const result   = [];
+
+    function processChunk() {
+        const end = Math.min(offset + CHUNK, total);
+        for (let i = offset; i < end; i++) {
+            const row         = allRows[i];
+            const code        = (row[idxCode] || '').toString().trim();
+            const designation = (row[idxDes]  || '').toString().trim();
+            if (!code || !designation) continue;
+            const prix  = idxPrix  !== '' ? (parseFloat((row[idxPrix]  || '0').toString().replace(',','.').replace(/[^\d.-]/g,'')) || 0) : 0;
+            const stock = idxStock !== '' ? (parseInt( (row[idxStock] || '0').toString().replace(',','.').replace(/[^\d.-]/g,'')) || 0) : 0;
+            result.push({ code, designation, prix, stock });
+        }
+        offset = end;
+        const pct = Math.round((offset / total) * 85) + 5;
+        setProgress(pct, `Traitement : ${offset.toLocaleString()} / ${total.toLocaleString()} lignes…`);
+
+        if (offset < total) {
+            requestAnimationFrame(processChunk);   // libère le thread entre chaque chunk
+        } else {
+            finalizeImport(result, total);
+        }
+    }
+
+    // Premier chunk au prochain frame (laisse l'UI se mettre à jour d'abord)
+    requestAnimationFrame(processChunk);
+});
+
+function finalizeImport(imported, totalInput) {
+    if (imported.length === 0) {
+        importError('Aucun article valide (vérifiez les colonnes sélectionnées)');
+        pendingImportData = null;
+        return;
+    }
+
+    setProgress(90, 'Sauvegarde en cours...');
+
+    // Sauvegarde en mode non-bloquant
     setTimeout(() => {
         try {
-            const imported = pendingImportData.dataRows
-                .map(row => {
-                    const code        = (row[idxCode] || '').toString().trim();
-                    const designation = (row[idxDes]  || '').toString().trim();
-                    if (!code || !designation) return null;
+            baseArticles = imported;
 
-                    let prix = 0;
-                    if (idxPrix !== '') {
-                        const raw = (row[idxPrix] || '0').toString().replace(',', '.').replace(/[^\d.-]/g, '');
-                        prix = parseFloat(raw) || 0;
-                    }
-
-                    let stock = 0;
-                    if (idxStock !== '') {
-                        const raw = (row[idxStock] || '0').toString().replace(',', '.').replace(/[^\d.-]/g, '');
-                        stock = parseInt(raw) || 0;
-                    }
-
-                    return { code, designation, prix, stock };
-                })
-                .filter(a => a !== null);
-
-            if (imported.length === 0) {
-                throw new Error('Aucun article valide trouvé (vérifiez les colonnes sélectionnées)');
+            // localStorage peut bloquer sur très grand volume → on découpe
+            try {
+                sauvegarderBase();
+            } catch (storageErr) {
+                // QuotaExceededError → on garde en mémoire sans crash
+                console.warn('localStorage plein :', storageErr.message);
+                messageBase.innerHTML += '<div class="alert alert-warning">⚠️ Base trop grande pour la mémoire locale — les données sont en mémoire uniquement (exportez avant de fermer l\'onglet)</div>';
             }
 
-            baseArticles = imported;
-            sauvegarderBase();
-            afficherBase();
+            setProgress(98, 'Affichage...');
+            setTimeout(() => {
+                afficherBase();
 
-            // Mettre à jour les désignations dans les saisies existantes
-            saisies.forEach(s => {
-                const art = baseArticles.find(a => a.code === s.code);
-                if (art) s.designation = art.designation;
-            });
-            sauvegarderSaisies();
+                // MAJ désignations dans les saisies
+                const codeMap = new Map(baseArticles.map(a => [a.code, a.designation]));
+                saisies.forEach(s => { if (codeMap.has(s.code)) s.designation = codeMap.get(s.code); });
+                try { sauvegarderSaisies(); } catch(_) {}
 
-            messageBase.innerHTML = `<div class="alert alert-success">
-                ✅ <strong>${imported.length.toLocaleString()}</strong> articles importés avec succès !
-            </div>`;
-        } catch (error) {
-            messageBase.innerHTML = `<div class="alert alert-error">⚠️ Erreur import : ${error.message}</div>`;
-            console.error('Erreur confirm import:', error);
-        } finally {
-            btnImport.disabled  = false;
-            pendingImportData   = null;
+                progressContainer.style.display = 'none';
+                btnImport.disabled  = false;
+                pendingImportData   = null;
+                messageBase.innerHTML = `<div class="alert alert-success">
+                    ✅ <strong>${imported.length.toLocaleString()}</strong> articles importés
+                    ${totalInput !== imported.length ? ' (' + (totalInput - imported.length).toLocaleString() + ' lignes ignorées)' : ''}
+                </div>`;
+            }, 50);
+        } catch (err) {
+            importError('Erreur finalisation : ' + err.message);
+            pendingImportData = null;
         }
-    }, 100);
-});
+    }, 50);
+}
 
 document.getElementById('btnCancelPreview').addEventListener('click', () => {
     importPreview.style.display = 'none';
