@@ -795,83 +795,87 @@ const importPreview     = document.getElementById('importPreview');
 // URL publique de SheetJS (même version que celle du <head>)
 const XLSX_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
-// ── Création du Worker via Blob (pas de importScripts) ──
-// Le Worker charge XLSX par fetch puis traite le fichier
-const WORKER_SRC = `
-self.onmessage = async function(e) {
-    const { arrayBuffer } = e.data;
-    try {
-        // Étape 1 : charger SheetJS dans le Worker
-        self.postMessage({ progress: 5, text: 'Chargement de SheetJS...' });
-        if (typeof XLSX === 'undefined') {
-            const resp = await fetch('${XLSX_CDN}');
-            if (!resp.ok) throw new Error('Impossible de charger SheetJS (' + resp.status + ')');
-            const src = await resp.text();
-            // eslint-disable-next-line no-eval
-            eval(src);
-        }
-
-        // Étape 2 : lire le workbook
-        self.postMessage({ progress: 20, text: 'Lecture du fichier Excel...' });
-        const data = new Uint8Array(arrayBuffer);
-        let workbook;
+// ── Fonction du Worker définie normalement, puis sérialisée en string ──
+// Avantage : AUCUN risque de conflit guillemets/apostrophes dans un template literal
+function _workerFn() {
+    self.onmessage = async function(e) {
+        var ab = e.data.arrayBuffer;
         try {
-            workbook = XLSX.read(data, { type: 'array', raw: true, cellDates: false });
-        } catch (err) {
-            throw new Error('Fichier illisible ou corrompu : ' + err.message);
-        }
-        if (!workbook.SheetNames || workbook.SheetNames.length === 0)
-            throw new Error('Aucune feuille trouvée dans le fichier');
-
-        // Étape 3 : convertir la 1ère feuille
-        self.postMessage({ progress: 40, text: 'Extraction des données...' });
-        const ws = workbook.Sheets[workbook.SheetNames[0]];
-        let allRows;
-        try {
-            allRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
-        } catch (err) {
-            throw new Error('Extraction impossible : ' + err.message);
-        }
-        if (!allRows || allRows.length === 0)
-            throw new Error('La feuille est vide');
-
-        // Étape 4 : nettoyer et détecter l'en-tête
-        self.postMessage({ progress: 65, text: 'Analyse des colonnes...' });
-        const cleanRows = allRows.filter(r => Array.isArray(r) && r.some(c => c !== '' && c != null));
-        if (cleanRows.length < 2) throw new Error('Données insuffisantes (< 2 lignes non vides)');
-
-        const keywords = ['code','désignation','designation','prix','stock',
-                          'libellé','libelle','réf','ref','article','produit','ean'];
-        let headerIdx = 0;
-        for (let i = 0; i < Math.min(cleanRows.length, 15); i++) {
-            if (keywords.some(kw => cleanRows[i].join(' ').toLowerCase().includes(kw))) {
-                headerIdx = i; break;
+            self.postMessage({ progress: 5, text: "Chargement SheetJS..." });
+            if (typeof XLSX === "undefined") {
+                var resp = await fetch(self._xlsxCdn);
+                if (!resp.ok) throw new Error("CDN inaccessible (" + resp.status + ")");
+                eval(await resp.text()); // charge XLSX dans le scope Worker
             }
+
+            self.postMessage({ progress: 20, text: "Lecture du fichier..." });
+            var data = new Uint8Array(ab);
+            var wb;
+            try {
+                wb = XLSX.read(data, { type: "array", raw: true, cellDates: false });
+            } catch(ex) { throw new Error("Fichier illisible : " + ex.message); }
+
+            if (!wb.SheetNames || wb.SheetNames.length === 0)
+                throw new Error("Aucune feuille trouvee dans le fichier");
+
+            self.postMessage({ progress: 40, text: "Extraction des donnees..." });
+            var ws = wb.Sheets[wb.SheetNames[0]];
+            var allRows;
+            try {
+                allRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false });
+            } catch(ex) { throw new Error("Extraction impossible : " + ex.message); }
+
+            if (!allRows || allRows.length === 0)
+                throw new Error("La feuille est vide");
+
+            self.postMessage({ progress: 65, text: "Analyse des colonnes..." });
+            var cleanRows = allRows.filter(function(r) {
+                return Array.isArray(r) && r.some(function(c) { return c !== "" && c != null; });
+            });
+            if (cleanRows.length < 2) throw new Error("Donnees insuffisantes (moins de 2 lignes)");
+
+            var keywords = ["code","designation","prix","stock","libelle","ref","article","produit","ean"];
+            var headerIdx = 0;
+            for (var i = 0; i < Math.min(cleanRows.length, 15); i++) {
+                var rowStr = cleanRows[i].join(" ").toLowerCase()
+                    .replace(/[éèê]/g,"e").replace(/[àâ]/g,"a").replace(/[îï]/g,"i");
+                if (keywords.some(function(kw){ return rowStr.indexOf(kw) !== -1; })) {
+                    headerIdx = i; break;
+                }
+            }
+
+            var headerRow = cleanRows[headerIdx].map(function(h){ return (h||"").toString().trim(); });
+            var dataRows = cleanRows.slice(headerIdx + 1).filter(function(r){
+                return r.some(function(c){ return c !== "" && c != null; });
+            });
+            if (dataRows.length === 0) throw new Error("Aucune ligne de donnees apres l en-tete");
+
+            var limited = dataRows.slice(0, 100000);
+            self.postMessage({ progress: 100, text: "Analyse terminee", done: true,
+                headerRow: headerRow, dataRows: limited, totalRows: dataRows.length });
+
+        } catch(err) {
+            self.postMessage({ error: err.message || String(err) });
         }
+    };
+}
 
-        const headerRow = cleanRows[headerIdx].map(h => (h || '').toString().trim());
-        const dataRows  = cleanRows.slice(headerIdx + 1).filter(r => r.some(c => c !== '' && c != null));
-        if (dataRows.length === 0) throw new Error('Aucune ligne de données après l\'en-tête');
-
-        const LIMITED   = dataRows.slice(0, 100000);
-        const totalRows = dataRows.length;
-
-        self.postMessage({ progress: 100, text: 'Analyse terminée', done: true,
-            headerRow, dataRows: LIMITED, totalRows });
-
-    } catch (err) {
-        self.postMessage({ error: err.message || String(err) });
-    }
-};
-`;
+// Sérialise la fonction + injecte la constante CDN → code Worker propre sans backticks
+function buildWorkerCode() {
+    var fnBody = _workerFn.toString()
+        .replace(/^function _workerFn\(\)\s*\{/, '')
+        .replace(/\}$/, '');
+    return 'self._xlsxCdn = "' + XLSX_CDN + '";\n' + fnBody;
+}
 
 // Tente de créer un Worker ; retourne null si l'environnement l'interdit
 function createWorker() {
     try {
-        const blob = new Blob([WORKER_SRC], { type: 'application/javascript' });
-        const url  = URL.createObjectURL(blob);
-        const w    = new Worker(url);
-        w._url = url;
+        var code = buildWorkerCode();
+        var blob = new Blob([code], { type: 'application/javascript' });
+        var url  = URL.createObjectURL(blob);
+        var w    = new Worker(url);
+        w._url   = url;
         return w;
     } catch (e) {
         console.warn('Web Worker non disponible, fallback activé :', e.message);
